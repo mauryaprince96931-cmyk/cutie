@@ -1,0 +1,146 @@
+@import url('https://fonts.googleapis.com/css2?family=Nunito:wght@700;800&family=Quicksand:wght@400;500;600;700&display=swap');
+@import "tailwindcss";
+
+@theme {
+  --font-sans: "Quicksand", ui-sans-serif, system-ui, sans-serif;
+  --font-heading: "Nunito", sans-serif;
+
+  --color-primary: #FFC0CB;
+  --color-background: #FFF2E0;
+  --color-accent: #F85A6E;
+  --color-secondary: #E6E6FA;
+  --color-highlight: #FFDAB9;
+  --color-text-dark: #5A3E3B;
+  
+  --radius-xl: 28px;
+  --radius-pill: 999px;
+
+  --shadow-soft: 0 6px 14px rgba(0,0,0,0.04);
+  --shadow-premium: 0 10px 30px -5px rgba(255, 192, 203, 0.2), 0 6px 14px rgba(0,0,0,0.04);
+
+  --animate-fade-in: fade-in 0.2s ease-out forwards;
+  --animate-scale-in: scale-in 0.15s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+
+  @keyframes fade-in {
+    from { opacity: 0; transform: translateY(4px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+
+  @keyframes scale-in {
+    from { opacity: 0; transform: scale(0.95); }
+    to { opacity: 1; transform: scale(1); }
+  }
+}
+
+@layer base {
+  :root {
+    --background: #FFF2E0;
+    --foreground: #5A3E3B;
+    --card: #FFFFFF;
+    --card-foreground: #5A3E3B;
+    --popover: #FFFFFF;
+    --popover-foreground: #5A3E3B;
+    --primary: #FEB6BA;
+    --primary-foreground: #FFFFFF;
+    --secondary: #F7E5D4;
+    --secondary-foreground: #5A3E3B;
+    --muted: #F7E5D4;
+    --muted-foreground: #8B6E6B;
+    --accent: #F85A6E;
+    --accent-foreground: #FFFFFF;
+    --destructive: #F85A6E;
+    --destructive-foreground: #FFFFFF;
+    --border: #F7E5D4;
+    --input: #F7E5D4;
+    --ring: #FEB6BA;
+    --radius: 1.5rem;
+  }
+
+  body {
+    @apply text-text-dark font-sans antialiased;
+    background: 
+      radial-gradient(circle at 2px 2px, rgba(90, 62, 59, 0.03) 1px, transparent 0),
+      linear-gradient(135deg, #FFF2E0 0%, #FFE5E7 100%);
+    background-size: 24px 24px, 100% 100%;
+    background-attachment: fixed;
+    min-height: 100vh;
+    overflow-x: hidden;
+    position: relative;
+    line-height: 1.6;
+  }
+
+  h1, h2, h3, h4, h5, h6 {
+    @apply font-heading font-extrabold tracking-[0.5px];
+  }
+
+  body::before {
+    content: "";
+    position: fixed;
+    top: -10%;
+    left: -10%;
+    width: 40%;
+    height: 40%;
+    background: radial-gradient(circle, rgba(254, 182, 186, 0.4) 0%, transparent 70%);
+    filter: blur(80px);
+    z-index: -1;
+    pointer-events: none;
+  }
+
+  body::after {
+    content: "";
+    position: fixed;
+    bottom: -10%;
+    right: -10%;
+    width: 50%;
+    height: 50%;
+    background: radial-gradient(circle, rgba(248, 90, 110, 0.2) 0%, transparent 70%);
+    filter: blur(100px);
+    z-index: -1;
+    pointer-events: none;
+  }
+}
+
+@utility scrapbook-card {
+  @apply bg-white rounded-[28px] shadow-soft border-2 border-dashed border-secondary/40 p-8 transition-all duration-300;
+  background: linear-gradient(to bottom, rgba(255,255,255,1), rgba(255,255,255,0.98));
+  box-shadow: 
+    inset 0 2px 0 0 rgba(255, 255, 255, 0.8),
+    0 6px 14px rgba(0,0,0,0.04);
+  will-change: transform, opacity;
+}
+
+@utility pill-button {
+  @apply rounded-pill px-10 py-4 font-semibold transition-all duration-300 active:scale-95 shadow-soft hover:shadow-lg hover:-translate-y-0.5 hover:scale-[1.03] hover:shadow-primary/20 flex items-center justify-center tracking-wide;
+  will-change: transform;
+}
+
+@utility bg-premium-gradient {
+  background: linear-gradient(135deg, #FFC0CB 0%, #FFDAB9 100%);
+  @apply text-text-dark shadow-premium border-none;
+}
+
+@utility text-gradient {
+  background: linear-gradient(135deg, #FFC0CB, #FFDAB9);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  @apply inline-block;
+}
+
+@utility stitched-input {
+  @apply rounded-[20px] bg-secondary/20 border-2 border-dashed border-secondary/40 focus:border-primary focus:ring-primary/10 transition-all duration-200;
+}
+
+@utility custom-scrollbar {
+  &::-webkit-scrollbar {
+    width: 6px;
+  }
+  &::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  &::-webkit-scrollbar-thumb {
+    @apply bg-secondary rounded-full;
+  }
+  &::-webkit-scrollbar-thumb:hover {
+    @apply bg-primary;
+  }
+}
