@@ -209,7 +209,7 @@ interface NodePosition {
 }
 
 interface FlowViewProps {
-  statements: Statement[];
+  statements: Statement[] | null;
   validationErrors: ValidationError[];
   onEditNode: (id: string) => void;
 }
@@ -226,7 +226,7 @@ const FlowView = ({ statements, validationErrors, onEditNode }: FlowViewProps) =
   useEffect(() => {
     const newPositions = { ...positions };
     let changed = false;
-    statements.forEach((s, i) => {
+    (statements || []).forEach((s, i) => {
       if (!newPositions[s.id]) {
         newPositions[s.id] = { 
           x: 150 + (i % 3) * 350, 
@@ -412,7 +412,7 @@ const FlowView = ({ statements, validationErrors, onEditNode }: FlowViewProps) =
               </marker>
             </defs>
             <AnimatePresence>
-              {statements.map(s => s.options.map(opt => {
+              {(statements || []).map(s => s.options.map(opt => {
                 if (!opt.nextId) return null;
                 const from = positions[s.id];
                 const to = positions[opt.nextId];
@@ -450,7 +450,7 @@ const FlowView = ({ statements, validationErrors, onEditNode }: FlowViewProps) =
           </svg>
 
           <AnimatePresence>
-            {statements.map((s, i) => {
+            {(statements || []).map((s, i) => {
               const hasNodeError = validationErrors.some(e => e.statementId === s.id);
               return (
                 <motion.div
@@ -587,7 +587,7 @@ const LOADING_MESSAGES = [
 
 export default function App() {
   const [users, setUsers] = useState<User[]>([]);
-  const { mode, setMode, currentUser, setCurrentUser, isAdmin, setIsAdmin, currentStatementId, setCurrentStatementId, endingActive, setEndingActive, statements, setStatements, endings, setEndings, ending, setEnding, entryMessage, setEntryMessage, isLoading, setIsLoading } = useAppContext();
+  const { mode, setMode, currentUser, setCurrentUser, isAdmin, setIsAdmin, currentStatementId, setCurrentStatementId, endingActive, setEndingActive, statements, setStatements, endings, setEndings, ending, setEnding, entryMessage, setEntryMessage, isLoading, setIsLoading, dataLoaded, setDataLoaded } = useAppContext();
   const [builderView, setBuilderView] = useState<BuilderView>('LIST');
   const [isReady, setIsReady] = useState(false);
   const [hasError, setHasError] = useState(false);
@@ -652,6 +652,7 @@ export default function App() {
                     setStatements(userData.data.statements || DEFAULT_STATEMENTS);
                     setEndings(userData.data.endings || []);
                     setEntryMessage(userData.data.entryMessage || { title: "Hey cutie 💖", subtitle: "I made something for you… 🥺" });
+                    setDataLoaded(true);
                     
                     if (userData.role === 'admin' || firebaseUser.email === ADMIN_EMAIL) {
                         setIsAdmin(true);
@@ -712,6 +713,7 @@ export default function App() {
     setStatements(user.data.statements || DEFAULT_STATEMENTS);
     setEndings(user.data.endings || []);
     setEntryMessage(user.data.entryMessage || { title: "Hey cutie 💖", subtitle: "I made something for you… 🥺" });
+    setDataLoaded(true);
     setMode('loading');
   };
 
@@ -785,10 +787,10 @@ export default function App() {
   }, [mode, isAdmin]);
 
   useEffect(() => {
-    if (currentUser && mode === 'builder' && isReady) {
+    if (currentUser && mode === 'builder' && isReady && dataLoaded && statements && endings && entryMessage) {
         saveUserDataDebounced(currentUser.id, { statements, endings, entryMessage });
     }
-  }, [statements, endings, entryMessage, currentUser, mode, isReady]);
+  }, [statements, endings, entryMessage, currentUser, mode, isReady, dataLoaded]);
 
   useEffect(() => {
     setEndingActive(currentStatementId === 'END');
@@ -811,7 +813,7 @@ export default function App() {
 
   const [highlightedErrorId, setHighlightedErrorId] = useState<string | null>(null);
 
-  const validationErrors = useMemo(() => getErrors(statements), [statements]);
+  const validationErrors = useMemo(() => getErrors(statements || []), [statements]);
 
   useEffect(() => {
     if (highlightedErrorId) {
@@ -856,15 +858,15 @@ export default function App() {
   };
 
   const deleteStatement = (id: string) => {
-    setStatements(statements.filter(s => s.id !== id));
+    setStatements(prev => (prev || []).filter(s => s.id !== id));
   };
 
   const updateStatement = (id: string, updates: Partial<Statement>) => {
-    setStatements(statements.map(s => s.id === id ? { ...s, ...updates } : s));
+    setStatements(prev => (prev || []).map(s => s.id === id ? { ...s, ...updates } : s));
   };
 
   const updateOption = (statementId: string, optionId: string, updates: Partial<Option>) => {
-    setStatements(statements.map(s => {
+    setStatements(prev => (prev || []).map(s => {
       if (s.id === statementId) {
         return {
           ...s,
@@ -876,7 +878,7 @@ export default function App() {
   };
 
   const addOption = (statementId: string) => {
-    setStatements(statements.map(s => {
+    setStatements(prev => (prev || []).map(s => {
       if (s.id === statementId) {
         const newOption: Option = {
           id: Math.random().toString(36).substr(2, 9),
@@ -895,7 +897,7 @@ export default function App() {
   };
 
   const deleteOption = (statementId: string, optionId: string) => {
-    setStatements(statements.map(s => {
+    setStatements(prev => (prev || []).map(s => {
       if (s.id === statementId) {
         if (s.options.length <= 2) return s;
         return {
@@ -919,7 +921,7 @@ export default function App() {
   };
 
   const startViewer = () => {
-    if (statements.length === 0) return;
+    if (!statements?.[0]) return;
     setCurrentStatementId(statements[0].id);
     setEndingActive(false);
     setMode('test');
@@ -973,7 +975,7 @@ export default function App() {
     if (option.isCorrect) {
       if (x !== undefined && y !== undefined) createRipple(x, y);
       if (option.endingId || option.ending || !option.nextId) {
-        const endData = (option.endingId ? endings.find(e => e.id === option.endingId) : option.ending) || ending;
+        const endData = (option.endingId ? endings?.find(e => e.id === option.endingId) : option.ending) || ending;
         setCurrentEndingDisplay(endData);
         setTimeout(() => {
           setEndingActive(true);
@@ -991,7 +993,7 @@ export default function App() {
     }
   };
 
-  const currentStatement = statements.find(s => s.id === currentStatementId) || statements[0];
+  const currentStatement = (statements || []).find(s => s.id === currentStatementId) || (statements || [])[0];
 
   // Screen Returns
   if (!isConfigValid) {
@@ -1023,12 +1025,12 @@ export default function App() {
     );
   }
 
-  if (mode === 'loading') {
+  if (mode === 'loading' || !dataLoaded) {
     return (
       <div 
         className={cn(
           "min-h-screen flex flex-col items-center justify-center relative overflow-hidden transition-all duration-300 ease-in-out",
-          isExitingLoading ? "opacity-0 scale-95" : "opacity-100 scale-100"
+          (isExitingLoading && dataLoaded) ? "opacity-0 scale-95" : "opacity-100 scale-100"
         )}
       >
         {/* Reuse app background layers */}
@@ -1268,8 +1270,8 @@ export default function App() {
                 {builderView === 'LIST' ? (
                   <div className="space-y-6 pb-20">
                     <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
-                      <SortableContext items={statements.map(s => s.id)} strategy={verticalListSortingStrategy}>
-                        {statements.map((statement, index) => (
+                      <SortableContext items={(statements || []).map(s => s.id)} strategy={verticalListSortingStrategy}>
+                        {(statements || []).map((statement, index) => (
                           <SortableItem key={statement.id} id={statement.id}>
                             <Card className="scrapbook-card relative overflow-hidden" id={`statement-${statement.id}`}>
                               <CardHeader className="pb-4 flex flex-row items-center justify-between space-y-0">
@@ -1318,16 +1320,16 @@ export default function App() {
                                               <SelectTrigger className="h-8"><SelectValue placeholder="Next Step" /></SelectTrigger>
                                               <SelectContent className="z-[9999]">
                                                 <SelectItem value="END">Ending 🏁</SelectItem>
-                                                {statements.filter(s => s.id !== statement.id).map((s, i) => (
+                                                {(statements || []).filter(s => s.id !== statement.id).map((s, i) => (
                                                   <SelectItem key={s.id} value={s.id}>
-                                                    Next #{statements.indexOf(s) + 1}
+                                                    Next #{(statements || []).indexOf(s) + 1}
                                                   </SelectItem>
                                                 ))}
                                               </SelectContent>
                                             </Select>
 
                                             {/* Specific Ending Selector */}
-                                            {!opt.nextId && endings.length > 0 && (
+                                            {!opt.nextId && (endings || []).length > 0 && (
                                               <Select 
                                                 value={opt.endingId || 'GLOBAL'} 
                                                 onValueChange={(v) => updateOption(statement.id, opt.id, { endingId: v === 'GLOBAL' ? null : v })}
@@ -1337,7 +1339,7 @@ export default function App() {
                                                 </SelectTrigger>
                                                 <SelectContent className="z-[9999]">
                                                   <SelectItem value="GLOBAL">Global Fallback 🏠</SelectItem>
-                                                  {endings.map((e) => (
+                                                  {(endings || []).map((e) => (
                                                     <SelectItem key={e.id} value={e.id}>{e.title}</SelectItem>
                                                   ))}
                                                 </SelectContent>
@@ -1390,8 +1392,12 @@ export default function App() {
                         <Heart className="w-12 h-12 text-white fill-current" />
                       </div>
                       <div className="space-y-4">
-                        <h1 className="text-5xl font-heading font-extrabold text-gradient leading-tight">{entryMessage.title}</h1>
-                        <p className="text-xl font-bold opacity-70 leading-relaxed font-sans">{entryMessage.subtitle}</p>
+                  {entryMessage && (
+                    <>
+                      <h1 className="text-5xl font-heading font-extrabold text-gradient leading-tight">{entryMessage.title}</h1>
+                      <p className="text-xl font-bold opacity-70 leading-relaxed font-sans">{entryMessage.subtitle}</p>
+                    </>
+                  )}
                       </div>
                       <Button 
                         onClick={() => {
@@ -1489,7 +1495,7 @@ export default function App() {
                     {err.type === 'warning' ? '⚠ ' : ''}{err.message}
                  </span>
                  <span className={`text-xs font-bold px-2 py-1 rounded-full uppercase ${err.type === 'warning' ? 'bg-primary/20 text-text-dark' : 'bg-accent/20 text-accent'}`}>
-                    Q{statements.findIndex(s => s.id === err.statementId) + 1}
+                    Q{(statements || []).findIndex(s => s.id === err.statementId) + 1}
                  </span>
                </div>
             ))}

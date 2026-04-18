@@ -14,16 +14,18 @@ interface AppState {
   setCurrentStatementId: (id: string | null) => void;
   endingActive: boolean;
   setEndingActive: (active: boolean) => void;
-  statements: Statement[];
-  setStatements: (statements: Statement[] | ((statements: Statement[]) => Statement[])) => void;
-  endings: Ending[];
-  setEndings: (endings: Ending[]) => void;
+  statements: Statement[] | null;
+  setStatements: (statements: Statement[] | null | ((statements: Statement[] | null) => Statement[] | null)) => void;
+  endings: Ending[] | null;
+  setEndings: (endings: Ending[] | null) => void;
   ending: { title: string; subtitle: string };
   setEnding: (ending: { title: string; subtitle: string }) => void;
-  entryMessage: EntryMessage;
-  setEntryMessage: (msg: EntryMessage) => void;
+  entryMessage: EntryMessage | null;
+  setEntryMessage: (msg: EntryMessage | null) => void;
   isLoading: boolean;
   setIsLoading: (loading: boolean) => void;
+  dataLoaded: boolean;
+  setDataLoaded: (loaded: boolean) => void;
 }
 
 const AppContext = createContext<AppState | undefined>(undefined);
@@ -34,17 +36,15 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   const [isAdmin, setIsAdmin] = useState(false);
   const [currentStatementId, setCurrentStatementId] = useState<string | null>(null);
   const [endingActive, setEndingActive] = useState(false);
-  const [statements, setStatements] = useState<Statement[]>([]);
-  const [endings, setEndings] = useState<Ending[]>([]);
+  const [statements, setStatements] = useState<Statement[] | null>(null);
+  const [endings, setEndings] = useState<Ending[] | null>(null);
   const [ending, setEnding] = useState<{ title: string; subtitle: string }>({
     title: "You chose love 💖",
     subtitle: "I knew you would… 🥺"
   });
-  const [entryMessage, setEntryMessage] = useState<EntryMessage>({
-    title: "Hey cutie 💖",
-    subtitle: "I made something for you… 🥺"
-  });
+  const [entryMessage, setEntryMessage] = useState<EntryMessage | null>(null);
   const [isLoading, setIsLoading] = useState(false);
+  const [dataLoaded, setDataLoaded] = useState(false);
 
   return (
     <AppContext.Provider
@@ -68,7 +68,9 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         entryMessage,
         setEntryMessage,
         isLoading,
-        setIsLoading
+        setIsLoading,
+        dataLoaded,
+        setDataLoaded
       }}
     >
       {children}
