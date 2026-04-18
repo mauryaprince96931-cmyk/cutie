@@ -7,7 +7,7 @@ import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import { UserPlus, Trash2, Key, User as UserIcon, AlertCircle, CheckCircle2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import type { User } from '../types';
-import { auth } from '@/lib/firebase';
+import { auth, isConfigValid } from '@/lib/firebase';
 import { signInWithEmailAndPassword } from 'firebase/auth';
 import { findUserByNameAndPass } from '@/lib/db';
 
@@ -41,6 +41,10 @@ export const LoginScreen = ({ onUserLogin }: { onUserLogin: (user: User) => void
   const [isLoading, setIsLoading] = useState(false);
 
   const handleLogin = async () => {
+    if (!auth.currentUser && !isConfigValid && isAdminMode) {
+      setError('Firebase is not configured. Please add API keys to Vercel.');
+      return;
+    }
     setError('');
     setIsLoading(true);
     try {

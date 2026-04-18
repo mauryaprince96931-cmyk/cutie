@@ -58,7 +58,7 @@ import { EntryMessageDialog } from './components/EntryMessageDialog';
 import { LoginScreen, AdminPanel } from './components/Auth';
 import { Button } from '@/components/ui/button';
 import { onAuthStateChanged } from 'firebase/auth';
-import { auth } from '@/lib/firebase';
+import { auth, isConfigValid } from '@/lib/firebase';
 import { fetchUserData, createUserData, deleteUserData, saveUserDataDebounced, fetchAllUsers } from '@/lib/db';
 import { loadSoundPreference, setSoundEnabled, playSound, initAudio } from './lib/sound';
 
@@ -617,6 +617,11 @@ export default function App() {
   // Auth & Data Lifecycle
   useEffect(() => {
     initAudio();
+    if (!isConfigValid) {
+        setIsReady(true);
+        setMode('login');
+        return;
+    }
     const unsub = onAuthStateChanged(auth, async (firebaseUser) => {
         if (firebaseUser) {
             setIsLoading(true);
@@ -989,6 +994,26 @@ export default function App() {
   const currentStatement = statements.find(s => s.id === currentStatementId) || statements[0];
 
   // Screen Returns
+  if (!isConfigValid) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-secondary/10 p-4">
+        <div className="bg-white p-8 rounded-3xl shadow-soft border border-secondary/20 max-w-sm w-full text-center space-y-4">
+          <AlertCircle className="w-12 h-12 text-accent mx-auto" />
+          <h1 className="text-2xl font-bold text-primary">Configuration Missing</h1>
+          <p className="text-sm text-muted-foreground font-medium italic">
+            "Firebase environment variables are not set in Vercel."
+          </p>
+          <div className="text-xs bg-secondary/10 p-4 rounded-xl text-left font-mono space-y-1">
+             <p>VITE_FIREBASE_API_KEY</p>
+             <p>VITE_FIREBASE_PROJECT_ID</p>
+             <p>...</p>
+          </div>
+          <p className="text-[10px] opacity-50 font-bold">Check your Vercel Dashboard Settings</p>
+        </div>
+      </div>
+    );
+  }
+
   if (mode === 'login') {
     return (
       <div className="min-h-screen flex flex-col items-center justify-center bg-background text-text-dark relative overflow-hidden">
