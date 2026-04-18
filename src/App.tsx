@@ -52,7 +52,10 @@ import {
 import { CSS } from '@dnd-kit/utilities';
 
 import { EndingMessageDialog } from './components/EndingMessageDialog';
+import { LoginScreen, AdminPanel } from './components/Auth';
 import { Button } from '@/components/ui/button';
+import { loadAuthData, saveAuthData } from './lib/auth';
+import type { User as UserType } from './types';
 import { loadSoundPreference, setSoundEnabled, playSound, initAudio } from './lib/sound';
 
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -212,7 +215,15 @@ const DEFAULT_STATEMENTS: Statement[] = [
   }
 ];
 
-type AppMode = 'BUILDER' | 'VIEWER';
+type AppMode = 'login' | 'admin' | 'builder' | 'viewer' | 'test';
+
+interface User {
+  id: string;
+  name: string;
+  passcode: string;
+  data: Statement[];
+}
+
 type BuilderView = 'LIST' | 'FLOW';
 
 interface ValidationError {
@@ -605,10 +616,93 @@ const LOADING_MESSAGES = [
 // --- Main App ---
 
 export default function App() {
-  const [mode, setMode] = useState<AppMode>('BUILDER');
+  const [mode, setMode] = useState<AppMode>('login');
+  const [currentUser, setCurrentUser] = useState<User | null>(null);
+  const [isAdmin, setIsAdmin] = useState(false);
+  const [users, setUsers] = useState<User[]>([]);
+
+  // Implementation of auth handlers
+  const handleUserLogin = (name: string, pass: string) => {
+    const authData = loadAuthData();
+    const user = authData.users.find((u: User) => u.name === name && u.passcode === pass);
+    if (user) {
+      setCurrentUser(user);
+      setMode('viewer');
+    } else {
+      alert("Invalid login!");
+    }
+  };
+  const handleAdminLogin = (pass: string) => {
+    const authData = loadAuthData();
+    if (authData.admin.passcode === pass) {
+      setIsAdmin(true);
+      setMode('admin');
+      setUsers(authData.users);
+    } else {
+      alert("Invalid admin passcode!");
+    }
+  };
+
+  const handleCreateUser = (name: string, pass: string) => {
+    const newUser = { id: Date.now().toString(), name, passcode: pass, data: [] };
+    const newUsers = [...users, newUser];
+    setUsers(newUsers);
+    const authData = loadAuthData();
+    authData.users = newUsers;
+    saveAuthData(authData);
+  };
+
+  const handleDeleteUser = (id: string) => {
+    const newUsers = users.filter(u => u.id !== id);
+    setUsers(newUsers);
+    const authData = loadAuthData();
+    authData.users = newUsers;
+    saveAuthData(authData);
+  };
+    
+  const handleEnterBuilder = (user: User) => {
+    console.log("Opening builder for:", user);
+    
+    // Ensure data exists
+    if (!user.data) {
+        user.data = [];
+    }
+
+    setCurrentUser(user);
+    setMode('builder');
+  };
+
+  if (mode === 'login') {
+    return <LoginScreen onLogin={handleUserLogin} onAdminLogin={handleAdminLogin} />;
+  }
+
+  if (mode === 'admin') {
+    return <AdminPanel users={users} onCreateUser={handleCreateUser} onEnterBuilder={handleEnterBuilder} onDeleteUser={handleDeleteUser} />;
+  }
+
+  // Rest of the App component...
   const [builderView, setBuilderView] = useState<BuilderView>('LIST');
   const [isReady, setIsReady] = useState(false);
-  const [statements, setStatements] = useState<Statement[]>([]);
+  const [statements, setStatements] = useState<Statement[]>(currentUser?.data || []);
+
+  useEffect(() => {
+    if (currentUser) {
+        setStatements(currentUser.data || []);
+    }
+  }, [currentUser]);
+
+  // Sync back to currentUser on change
+  useEffect(() => {
+    if (currentUser) {
+        currentUser.data = statements;
+        const authData = loadAuthData();
+        const userIndex = authData.users.findIndex((u: User) => u.id === currentUser.id);
+        if (userIndex !== -1) {
+            authData.users[userIndex].data = statements;
+            saveAuthData(authData);
+        }
+    }
+  }, [statements]);
   const [endings, setEndings] = useState<Ending[]>([]);
   const [ending, setEnding] = useState<{ title: string; subtitle: string }>({
     title: "You chose love 💖",
