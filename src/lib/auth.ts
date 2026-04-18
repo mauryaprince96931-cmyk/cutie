@@ -4,7 +4,11 @@ import { User } from '../types';
 export const loadAuth = () => {
     const data = localStorage.getItem('cute_app_auth');
     if (data) {
-        return JSON.parse(data);
+        try {
+            return JSON.parse(data);
+        } catch (e) {
+            console.error('Failed to parse auth data:', e);
+        }
     }
     return { admin: { passcode: '1234' }, users: [] };
 };
@@ -16,7 +20,11 @@ export const saveAuth = (data: any) => {
 export const loadUserData = (userId: string) => {
     const data = localStorage.getItem(`cute_user_${userId}`);
     if (data) {
-        return JSON.parse(data);
+        try {
+            return JSON.parse(data);
+        } catch (e) {
+            console.error('Failed to parse user data:', e);
+        }
     }
     return { statements: [], endings: [], entryMessage: null };
 };

@@ -157,7 +157,7 @@ export const AdminPanel = ({ users, onCreateUser, onEnterBuilder, onDeleteUser }
                       placeholder="New Username" 
                       value={name} 
                       onChange={e => setName(e.target.value)}
-                      className={cn("h-10 pl-10 rounded-xl text-sm", error && !name.trim() && "border-accent")}
+                      className={cn("pl-10", error && !name.trim() && "border-accent")}
                     />
                   </div>
                 </div>
@@ -168,7 +168,7 @@ export const AdminPanel = ({ users, onCreateUser, onEnterBuilder, onDeleteUser }
                       placeholder="New Passcode" 
                       value={pass} 
                       onChange={e => setPass(e.target.value)}
-                      className={cn("h-10 pl-10 rounded-xl text-sm", error && !pass.trim() && "border-accent")}
+                      className={cn("pl-10", error && !pass.trim() && "border-accent")}
                     />
                   </div>
                 </div>

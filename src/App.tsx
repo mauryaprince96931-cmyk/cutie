@@ -81,6 +81,7 @@ import {
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { cn } from '@/lib/utils';
 import { useAppContext, AppMode } from './store/AppContext';
+import { BuilderTopPanel } from './components/Builder/BuilderTopPanel';
 import { getErrors } from '@/lib/validation';
 import { ValidationError, User, Statement, Ending, Option, EntryMessage } from './types';
 
@@ -1177,52 +1178,48 @@ export default function App() {
                 className="space-y-8"
               >
                 {/* Toolbar */}
-                <div className="bg-white/90 backdrop-blur-md p-5 rounded-[32px] shadow-soft sticky top-4 z-10 border border-white/50 space-y-4">
-                  <div className="flex items-center justify-between">
-                    <div className={cn(
-                      "flex items-center gap-2 px-4 py-1.5 rounded-full border",
-                      validationErrors.length > 0 ? "bg-accent/5 border-accent/20 text-accent" : "bg-highlight/5 border-highlight/20 text-highlight"
-                    )}>
-                      <span className="text-[10px] font-bold uppercase tracking-widest">
-                        {validationErrors.length > 0 ? `${validationErrors.length} Errors 💔` : 'Ready 💖'}
-                      </span>
+                {builderView === 'LIST' && (
+                  <div className="bg-white/90 backdrop-blur-md p-5 rounded-[32px] shadow-soft sticky top-4 z-10 border border-white/50 space-y-4">
+                    <div className="flex items-center justify-between">
+                      <div className={cn(
+                        "flex items-center gap-2 px-4 py-1.5 rounded-full border",
+                        validationErrors.length > 0 ? "bg-accent/5 border-accent/20 text-accent" : "bg-highlight/5 border-highlight/20 text-highlight"
+                      )}>
+                        <span className="text-[10px] font-bold uppercase tracking-widest">
+                          {validationErrors.length > 0 ? `${validationErrors.length} Errors 💔` : 'Ready 💖'}
+                        </span>
+                      </div>
+                      
+                      {(() => {
+                        const realErrors = validationErrors.filter(e => e.type !== 'warning');
+                        return (
+                          <Button 
+                            onClick={() => {
+                                if (realErrors.length > 0) {
+                                    setShowErrorDialog(true);
+                                    setErrorMessage(`${realErrors.length} errors found.`);
+                                } else {
+                                    startViewer();
+                                }
+                            }} 
+                            className={cn(
+                              "pill-button font-bold text-sm px-6 h-10",
+                              realErrors.length > 0 ? "bg-accent text-white" : "bg-premium-gradient"
+                            )}
+                          >
+                              {realErrors.length > 0 ? `Errors ⚠️ (${realErrors.length})` : 'Finish & Run ▶'}
+                          </Button>
+                        );
+                      })()}
                     </div>
-
-                  <div className="h-px bg-secondary/20 w-full" />
-                  
-                    {(() => {
-                      const realErrors = validationErrors.filter(e => e.type !== 'warning');
-                      return (
-                        <Button 
-                          onClick={() => {
-                              if (realErrors.length > 0) {
-                                  setShowErrorDialog(true);
-                                  setErrorMessage(`${realErrors.length} errors found.`);
-                              } else {
-                                  startViewer();
-                              }
-                          }} 
-                          className={cn(
-                            "pill-button font-bold text-sm px-6 h-10",
-                            realErrors.length > 0 ? "bg-accent text-white" : "bg-premium-gradient"
-                          )}
-                        >
-                            {realErrors.length > 0 ? `Errors ⚠️ (${realErrors.length})` : 'Finish & Run ▶'}
-                        </Button>
-                      );
-                    })()}
+                    <BuilderTopPanel 
+                      onExport={exportConfig}
+                      onImport={importConfig}
+                      onOpenIntro={() => setShowEntryDialog(true)}
+                      onOpenEndings={() => setShowEndingModal(true)}
+                    />
                   </div>
-                  <div className="h-px bg-secondary/20 w-full" />
-                  <div className="flex items-center justify-center gap-3">
-                    <Button variant="ghost" onClick={exportConfig} className="rounded-full text-xs font-bold text-muted-foreground h-9"><Download className="w-4 h-4 mr-2" /> Export</Button>
-                    <div className="relative">
-                      <input type="file" accept=".json" onChange={importConfig} className="absolute inset-0 opacity-0 cursor-pointer" />
-                      <Button variant="ghost" className="rounded-full text-xs font-bold text-muted-foreground h-9"><Upload className="w-4 h-4 mr-2" /> Import</Button>
-                    </div>
-                    <Button variant="ghost" onClick={() => setShowEntryDialog(true)} className="rounded-full text-xs font-bold text-muted-foreground h-9"><Sparkles className="w-4 h-4 mr-2" /> Intro</Button>
-                    <Button variant="ghost" onClick={() => setShowEndingModal(true)} className="rounded-full text-xs font-bold text-muted-foreground h-9"><Heart className="w-4 h-4 mr-2" /> Endings</Button>
-                  </div>
-                </div>
+                )}
 
                 {builderView === 'LIST' ? (
                   <div className="space-y-6 pb-20">
@@ -1396,12 +1393,14 @@ export default function App() {
         {mode === 'builder' && (
           <>
             <motion.div initial={{ y: 50 }} animate={{ y: 0 }} exit={{ y: 50 }} className="fixed bottom-[calc(20px+env(safe-area-inset-bottom,24px))] left-6 flex bg-white/90 backdrop-blur-md p-1.5 rounded-full shadow-premium border border-primary/20 z-[5000]">
-              <Button variant={builderView === 'LIST' ? 'secondary' : 'ghost'} onClick={() => setBuilderView('LIST')} className={cn("rounded-full px-6", builderView === 'LIST' && "bg-premium-gradient text-white")}>List</Button>
-              <Button variant={builderView === 'FLOW' ? 'secondary' : 'ghost'} onClick={() => setBuilderView('FLOW')} className={cn("rounded-full px-6", builderView === 'FLOW' && "bg-premium-gradient text-white")}>Flow</Button>
+                <Button variant={builderView === 'LIST' ? 'secondary' : 'ghost'} onClick={() => setBuilderView('LIST')} className={cn("rounded-full px-6", builderView === 'LIST' && "bg-premium-gradient text-white")}>List</Button>
+                <Button variant={builderView === 'FLOW' ? 'secondary' : 'ghost'} onClick={() => setBuilderView('FLOW')} className={cn("rounded-full px-6", builderView === 'FLOW' && "bg-premium-gradient text-white")}>Flow</Button>
             </motion.div>
-            <motion.button initial={{ scale: 0 }} animate={{ scale: 1 }} exit={{ scale: 0 }} onClick={addStatement} className="fixed bottom-[calc(20px+env(safe-area-inset-bottom,24px))] right-6 w-16 h-16 bg-premium-gradient rounded-full shadow-premium flex items-center justify-center z-[5000] text-white">
-              <PlusIcon className="w-8 h-8" />
-            </motion.button>
+            {builderView === 'LIST' && (
+                <motion.button initial={{ scale: 0 }} animate={{ scale: 1 }} exit={{ scale: 0 }} onClick={addStatement} className="fixed bottom-[calc(20px+env(safe-area-inset-bottom,24px))] right-6 w-16 h-16 bg-premium-gradient rounded-full shadow-premium flex items-center justify-center z-[5000] text-white">
+                <PlusIcon className="w-8 h-8" />
+                </motion.button>
+            )}
           </>
         )}
       </AnimatePresence>
