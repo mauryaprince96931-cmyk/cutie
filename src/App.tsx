@@ -55,8 +55,7 @@ import { EndingMessageDialog } from './components/EndingMessageDialog';
 import { EntryMessageDialog } from './components/EntryMessageDialog';
 import { LoginScreen, AdminPanel } from './components/Auth';
 import { Button } from '@/components/ui/button';
-import { loadAuthData, saveAuthData } from './lib/auth';
-import type { User as UserType } from './types';
+import { loadAuth, saveAuth, loadUserData, saveUserData } from './lib/auth';
 import { loadSoundPreference, setSoundEnabled, playSound, initAudio } from './lib/sound';
 
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -81,35 +80,9 @@ import {
 } from "@/components/ui/dialog";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { cn } from '@/lib/utils';
-
-// --- Types ---
-
-interface Ending {
-  id: string;
-  title: string;
-  subtitle: string;
-}
-
-interface EntryMessage {
-  title: string;
-  subtitle: string;
-}
-
-interface Option {
-  id: string;
-  text: string;
-  nextId: string | null;
-  isCorrect: boolean;
-  wrongMessage: string;
-  endingId?: string | null;
-  ending?: { title: string; subtitle: string } | null;
-}
-
-interface Statement {
-  id: string;
-  text: string;
-  options: Option[];
-}
+import { useAppContext, AppMode } from './store/AppContext';
+import { getErrors } from '@/lib/validation';
+import { ValidationError, User, Statement, Ending, Option, EntryMessage } from './types';
 
 // --- Components ---
 
@@ -222,15 +195,6 @@ const DEFAULT_STATEMENTS: Statement[] = [
     ]
   }
 ];
-
-type AppMode = 'login' | 'admin' | 'builder' | 'viewer' | 'test' | 'loading';
-
-interface User {
-  id: string;
-  name: string;
-  passcode: string;
-  data: Statement[];
-}
 
 type BuilderView = 'LIST' | 'FLOW';
 
@@ -624,38 +588,22 @@ const LOADING_MESSAGES = [
 // --- Main App ---
 
 export default function App() {
-  // 1. All hooks at the top level
-  const [mode, setMode] = useState<AppMode>('login');
-  const [currentUser, setCurrentUser] = useState<User | null>(null);
-  const [isAdmin, setIsAdmin] = useState(false);
   const [users, setUsers] = useState<User[]>([]);
+  const { mode, setMode, currentUser, setCurrentUser, isAdmin, setIsAdmin, currentStatementId, setCurrentStatementId, endingActive, setEndingActive, statements, setStatements, endings, setEndings, ending, setEnding, entryMessage, setEntryMessage } = useAppContext();
   const [builderView, setBuilderView] = useState<BuilderView>('LIST');
   const [isReady, setIsReady] = useState(false);
-  const [statements, setStatements] = useState<Statement[]>([]);
-  const [endings, setEndings] = useState<Ending[]>([]);
-  const [ending, setEnding] = useState<{ title: string; subtitle: string }>({
-    title: "You chose love 💖",
-    subtitle: "I knew you would… 🥺"
-  });
   const [hasError, setHasError] = useState(false);
-  const [endingActive, setEndingActive] = useState(false);
   const [currentEndingDisplay, setCurrentEndingDisplay] = useState<{title: string, subtitle: string} | null>(null);
   const [showEndingModal, setShowEndingModal] = useState(false);
-  const [currentStatementId, setCurrentStatementId] = useState<string | null>(null);
+  const [showEntryDialog, setShowEntryDialog] = useState(false);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [showWrongPopup, setShowWrongPopup] = useState(false);
   const [wrongMessage, setWrongMessage] = useState('');
-  const [lastWrongMsgIndex, setLastWrongMsgIndex] = useState<number | null>(null);
-  const [showErrorDialog, setShowErrorDialog] = useState(false);
+  const [showEntryScreen, setShowEntryScreen] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
+  const [showErrorDialog, setShowErrorDialog] = useState(false);
   const [saveStatus, setSaveStatus] = useState<'Saved 💾' | 'Saving...'>('Saved 💾');
   const [soundOn, setSoundOn] = useState(true);
-  const [entryMessage, setEntryMessage] = useState<EntryMessage>({
-    title: "Hey cutie 💖",
-    subtitle: "I made something for you… 🥺"
-  });
-  const [showEntryScreen, setShowEntryScreen] = useState(false);
-  const [showEntryDialog, setShowEntryDialog] = useState(false);
   const [loadingText, setLoadingText] = useState("");
   const [isExitingLoading, setIsExitingLoading] = useState(false);
   const [statementToDelete, setStatementToDelete] = useState<string | null>(null);
@@ -663,7 +611,7 @@ export default function App() {
 
   // Auth Handlers
   const handleUserLogin = (name: string, pass: string) => {
-    const authData = loadAuthData();
+    const authData = loadAuth();
     const user = authData.users.find((u: User) => u.name === name && u.passcode === pass);
     if (user) {
       setCurrentUser(user);
@@ -674,7 +622,7 @@ export default function App() {
   };
 
   const handleAdminLogin = (pass: string) => {
-    const authData = loadAuthData();
+    const authData = loadAuth();
     if (authData.admin.passcode === pass) {
       setIsAdmin(true);
       setMode('admin');
@@ -688,17 +636,17 @@ export default function App() {
     const newUser = { id: Date.now().toString(), name, passcode: pass, data: [] };
     const newUsers = [...users, newUser];
     setUsers(newUsers);
-    const authData = loadAuthData();
+    const authData = loadAuth();
     authData.users = newUsers;
-    saveAuthData(authData);
+    saveAuth(authData);
   };
 
   const handleDeleteUser = (id: string) => {
     const newUsers = users.filter(u => u.id !== id);
     setUsers(newUsers);
-    const authData = loadAuthData();
+    const authData = loadAuth();
     authData.users = newUsers;
-    saveAuthData(authData);
+    saveAuth(authData);
   };
     
   const handleEnterBuilder = (user: User) => {
@@ -775,32 +723,22 @@ export default function App() {
 
   useEffect(() => {
     setSoundOn(loadSoundPreference());
-    initAudio();
     setIsReady(true);
   }, []);
 
   useEffect(() => {
     if (!currentUser) return;
 
-    let allData = {};
-    try {
-      allData = JSON.parse(localStorage.getItem(DATA_KEY) || '{}');
-    } catch(e) {}
-    
-    // @ts-ignore
-    const userData = allData[currentUser.id];
-    if (userData) {
-      setStatements(userData.statements || []);
+    const userData = loadUserData(currentUser.id);
+    if (userData && Object.keys(userData).length > 0) {
+      setStatements(userData.statements || DEFAULT_STATEMENTS);
       setEndings(userData.endings || []);
       if (userData.ending) setEnding(userData.ending);
-      if (userData.entryMessage) {
-        setEntryMessage(userData.entryMessage);
-      } else {
-        setEntryMessage({
-          title: "Hey cutie 💖",
-          subtitle: "I made something for you… 🥺"
-        });
-      }
+      
+      setEntryMessage(userData.entryMessage || {
+        title: "Hey cutie 💖",
+        subtitle: "I made something for you… 🥺"
+      });
     } else {
       setStatements(DEFAULT_STATEMENTS);
       setEndings([]);
@@ -821,14 +759,7 @@ export default function App() {
 
     setSaveStatus('Saving...');
     const timer = setTimeout(() => {
-      let allData = {};
-      try {
-        allData = JSON.parse(localStorage.getItem(DATA_KEY) || '{}');
-      } catch(e) {}
-      
-      // @ts-ignore
-      allData[currentUser.id] = { statements, ending, endings, entryMessage };
-      localStorage.setItem(DATA_KEY, JSON.stringify(allData));
+      saveUserData(currentUser.id, { statements, ending, endings, entryMessage });
       setSaveStatus('Saved 💾');
     }, 500);
     return () => clearTimeout(timer);
@@ -852,21 +783,17 @@ export default function App() {
     return () => window.removeEventListener('error', handleError);
   }, []);
 
-  const validationErrors = useMemo(() => {
-    const errors: ValidationError[] = [];
-    const statementIds = new Set(statements.map(s => s.id));
-    statements.forEach(s => {
-      if (!s.text.trim()) errors.push({ statementId: s.id, field: 'text', message: 'Question text is required' });
-      if (s.options.length < 2) errors.push({ statementId: s.id, field: 'options', message: 'At least 2 options are required' });
-      if (!s.options.some(opt => opt.isCorrect)) errors.push({ statementId: s.id, field: 'options', message: 'At least one correct option needed' });
-      s.options.forEach(opt => {
-        if (!opt.text.trim()) errors.push({ statementId: s.id, optionId: opt.id, field: 'optionText', message: 'Option text required' });
-        if (!opt.isCorrect && !opt.wrongMessage.trim()) errors.push({ statementId: s.id, optionId: opt.id, field: 'wrongMessage', message: 'Oops message required' });
-        if (opt.isCorrect && opt.nextId && !statementIds.has(opt.nextId)) errors.push({ statementId: s.id, optionId: opt.id, field: 'nextId', message: 'Invalid next statement' });
-      });
-    });
-    return errors;
-  }, [statements]);
+
+  const [highlightedErrorId, setHighlightedErrorId] = useState<string | null>(null);
+
+  const validationErrors = useMemo(() => getErrors(statements), [statements]);
+
+  useEffect(() => {
+    if (highlightedErrorId) {
+       const timer = setTimeout(() => setHighlightedErrorId(null), 3000);
+       return () => clearTimeout(timer);
+    }
+  }, [highlightedErrorId]);
 
   const toggleSound = () => {
     const newState = !soundOn;
@@ -1261,12 +1188,29 @@ export default function App() {
                       </span>
                     </div>
 
-                    <Button 
-                      onClick={() => validationErrors.length > 0 ? (setErrorMessage('Fix errors first!'), setShowErrorDialog(true)) : startViewer()} 
-                      className="pill-button font-bold text-sm px-6 h-10 bg-premium-gradient"
-                    >
-                      Finish & Run ▶
-                    </Button>
+                  <div className="h-px bg-secondary/20 w-full" />
+                  
+                    {(() => {
+                      const realErrors = validationErrors.filter(e => e.type !== 'warning');
+                      return (
+                        <Button 
+                          onClick={() => {
+                              if (realErrors.length > 0) {
+                                  setShowErrorDialog(true);
+                                  setErrorMessage(`${realErrors.length} errors found.`);
+                              } else {
+                                  startViewer();
+                              }
+                          }} 
+                          className={cn(
+                            "pill-button font-bold text-sm px-6 h-10",
+                            realErrors.length > 0 ? "bg-accent text-white" : "bg-premium-gradient"
+                          )}
+                        >
+                            {realErrors.length > 0 ? `Errors ⚠️ (${realErrors.length})` : 'Finish & Run ▶'}
+                        </Button>
+                      );
+                    })()}
                   </div>
                   <div className="h-px bg-secondary/20 w-full" />
                   <div className="flex items-center justify-center gap-3">
@@ -1480,11 +1424,34 @@ export default function App() {
       />
 
       <Dialog open={showErrorDialog} onOpenChange={setShowErrorDialog}>
-        <DialogContent className="sm:max-w-[400px] rounded-[28px] p-10 text-center">
-          <AlertCircle className="w-12 h-12 text-primary mx-auto mb-4" />
-          <DialogTitle className="text-2xl font-bold mb-2">Oopsie!</DialogTitle>
-          <p className="text-lg opacity-80 mb-6">{errorMessage}</p>
-          <Button onClick={() => setShowErrorDialog(false)} className="pill-button bg-premium-gradient w-full">Close</Button>
+        <DialogContent className="sm:max-w-[500px] rounded-[28px] p-10">
+          <DialogTitle className="text-2xl font-bold mb-4 text-center">Errors found! ⚠️</DialogTitle>
+          <div className="space-y-3 max-h-[300px] overflow-y-auto custom-scrollbar">
+            {validationErrors.map((err, i) => (
+               <div 
+                 key={i} 
+                 className={`p-3 rounded-xl border cursor-pointer hover:opacity-80 transition-all flex items-center justify-between ${err.type === 'warning' ? 'bg-primary/10 border-primary/20' : 'bg-accent/10 border-accent/20'}`}
+                 onClick={() => {
+                   setShowErrorDialog(false);
+                   setHighlightedErrorId(err.statementId);
+                   const el = document.getElementById(`statement-${err.statementId}`);
+                   if (el) {
+                       el.scrollIntoView({ behavior: 'smooth' });
+                       el.classList.add('error-highlight');
+                       setTimeout(() => el.classList.remove('error-highlight'), 3000);
+                   }
+                 }}
+               >
+                 <span className={`text-sm font-semibold ${err.type === 'warning' ? 'text-text-dark' : 'text-accent'}`}>
+                    {err.type === 'warning' ? '⚠ ' : ''}{err.message}
+                 </span>
+                 <span className={`text-xs font-bold px-2 py-1 rounded-full uppercase ${err.type === 'warning' ? 'bg-primary/20 text-text-dark' : 'bg-accent/20 text-accent'}`}>
+                    Q{statements.findIndex(s => s.id === err.statementId) + 1}
+                 </span>
+               </div>
+            ))}
+          </div>
+          <Button onClick={() => setShowErrorDialog(false)} className="pill-button bg-premium-gradient w-full mt-6">Close</Button>
         </DialogContent>
       </Dialog>
 
