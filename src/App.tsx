@@ -14,6 +14,8 @@ import {
   Star, 
   Sparkles, 
   RotateCcw, 
+  Home,
+  Users,
   Download, 
   Upload,
   GripVertical,
@@ -715,7 +717,20 @@ export default function App() {
   };
 
   const handleLogout = () => {
-    auth.signOut();
+    if (isAdmin) {
+      if (mode === 'admin') {
+        auth.signOut();
+      } else {
+        // Just go back to user list
+        setMode('admin');
+        setCurrentUser(null);
+      }
+    } else {
+      // Regular user logs out
+      auth.signOut();
+      setCurrentUser(null);
+      setMode('login');
+    }
   };
 
   // Sensors for DND
@@ -734,8 +749,8 @@ export default function App() {
       setLoadingText(LOADING_MESSAGES[randomIndex]);
       playSound('swish');
 
-      const baseDelay = 1800 + Math.random() * 700; // 1800–2500ms
-      const delay = Math.max(1300, baseDelay * 0.75); // 1350–1875ms, min 1300ms
+      const baseDelay = 600 + Math.random() * 400; // 600–1000ms
+      const delay = Math.max(500, baseDelay); // Min 500ms for quick feel
 
       const fadeTimer = setTimeout(() => setIsExitingLoading(true), delay - 250);
       const timer = setTimeout(() => {
@@ -1155,7 +1170,7 @@ export default function App() {
             )}
 
             <Button variant="ghost" size="icon" onClick={handleLogout} className="w-10 h-10 rounded-full text-primary">
-              <RotateCcw className="w-5 h-5" />
+              {isAdmin ? <Users className="w-5 h-5" /> : <RotateCcw className="w-5 h-5" />}
             </Button>
           </div>
         </div>

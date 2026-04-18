@@ -12,6 +12,7 @@ import { signInWithEmailAndPassword } from 'firebase/auth';
 import { findUserByNameAndPass } from '@/lib/db';
 
 const getFriendlyError = (code: string) => {
+  const domain = window.location.hostname;
   switch (code) {
     case 'auth/invalid-email': return 'Invalid email address 💖';
     case 'auth/user-not-found': return 'No account found with this email ✨';
@@ -19,8 +20,13 @@ const getFriendlyError = (code: string) => {
     case 'auth/email-already-in-use': return 'Email already registered ✨';
     case 'auth/weak-password': return 'Passcode is too weak 🧸';
     case 'auth/invalid-credential': return 'Invalid credentials 💖';
-    case 'auth/operation-not-allowed': return 'Email login is not enabled in Firebase 🎀 (Check console!)';
-    case 'auth/network-request-failed': return 'Network error, please check your connection 🌐';
+    case 'auth/operation-not-allowed': return 'Email login is not enabled in Firebase 🎀';
+    case 'auth/network-request-failed': 
+      return `Domain not authorized? 🌐 Add "${domain}" to Firebase Authorized Domains in Settings!`;
+    case 'unavailable':
+      return 'Database is offline 📶 check your internet or Firebase config.';
+    case 'permission-denied':
+      return 'Permission Denied 🔒 (Security Rules issue)';
     default: return `Error (${code}): Something went wrong, try again! 🎀`;
   }
 };
@@ -32,19 +38,23 @@ export const LoginScreen = ({ onUserLogin }: { onUserLogin: (user: User) => void
   const [adminPass, setAdminPass] = useState('');
   const [error, setError] = useState('');
   const [isAdminMode, setIsAdminMode] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
 
   const handleLogin = async () => {
     setError('');
+    setIsLoading(true);
     try {
       if (isAdminMode) {
         if (!email || !adminPass) {
           setError('Email and Admin Passcode required 🧸');
+          setIsLoading(false);
           return;
         }
         await signInWithEmailAndPassword(auth, email, adminPass);
       } else {
         if (!name || !pass) {
           setError('Username and Passcode required 🎀');
+          setIsLoading(false);
           return;
         }
         const user = await findUserByNameAndPass(name, pass);
@@ -56,6 +66,8 @@ export const LoginScreen = ({ onUserLogin }: { onUserLogin: (user: User) => void
       }
     } catch (e: any) {
       setError(getFriendlyError(e.code));
+    } finally {
+      setIsLoading(false);
     }
   };
 
@@ -91,8 +103,12 @@ export const LoginScreen = ({ onUserLogin }: { onUserLogin: (user: User) => void
             </>
           )}
           
-          <Button className="w-full bg-premium-gradient rounded-2xl h-12 font-bold text-lg shadow-premium" onClick={handleLogin}>
-            {isAdminMode ? 'Admin Login 🎀' : 'Login 💖'}
+          <Button 
+            className="w-full bg-premium-gradient rounded-2xl h-12 font-bold text-lg shadow-premium" 
+            onClick={handleLogin}
+            disabled={isLoading}
+          >
+            {isLoading ? 'Connecting... ✨' : (isAdminMode ? 'Admin Login 🎀' : 'Login 💖')}
           </Button>
 
           <button 
