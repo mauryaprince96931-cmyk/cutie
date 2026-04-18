@@ -8,19 +8,40 @@ import { UserPlus, Trash2, Key, User as UserIcon, AlertCircle, CheckCircle2 } fr
 import { cn } from '@/lib/utils';
 import type { User } from '../types';
 
-export const LoginScreen = ({ onLogin, onAdminLogin }: { onLogin: (name: string, pass: string) => void, onAdminLogin: (pass: string) => void }) => {
-  const [name, setName] = useState('');
+import React, { useState } from 'react';
+import { motion, AnimatePresence } from 'motion/react';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
+import { UserPlus, Trash2, Key, User as UserIcon, AlertCircle, CheckCircle2 } from 'lucide-react';
+import { cn } from '@/lib/utils';
+import type { User } from '../types';
+import { auth } from '@/lib/firebase';
+import { signInWithEmailAndPassword } from 'firebase/auth';
+
+export const LoginScreen = ({ onLogin, onAdminLogin }: { onLogin: (email: string, pass: string) => void, onAdminLogin: (pass: string) => void }) => {
+  const [email, setEmail] = useState('');
   const [pass, setPass] = useState('');
   const [adminPass, setAdminPass] = useState('');
+  const [error, setError] = useState('');
+
+  const handleLogin = async () => {
+    try {
+      await signInWithEmailAndPassword(auth, email, pass);
+    } catch (e) {
+      setError('Invalid email or passcode 💖');
+    }
+  };
 
   return (
     <div className="flex flex-col items-center justify-center min-h-screen bg-secondary/10 p-4">
       <div className="bg-white p-8 rounded-3xl shadow-soft border border-secondary/20 max-w-sm w-full space-y-6">
         <h1 className="text-2xl font-bold text-center text-primary">Login</h1>
+        {error && <p className="text-accent text-center font-bold">{error}</p>}
         <div className="space-y-4">
-          <Input placeholder="Username" value={name} onChange={e => setName(e.target.value)} />
+          <Input placeholder="Email" value={email} onChange={e => setEmail(e.target.value)} />
           <Input type="password" placeholder="Passcode" value={pass} onChange={e => setPass(e.target.value)} />
-          <Button className="w-full bg-premium-gradient" onClick={() => onLogin(name, pass)}>Login</Button>
+          <Button className="w-full bg-premium-gradient" onClick={handleLogin}>Login</Button>
         </div>
         <div className="pt-6 border-t border-secondary/20 space-y-4">
           <Input type="password" placeholder="Admin Passcode" value={adminPass} onChange={e => setAdminPass(e.target.value)} />

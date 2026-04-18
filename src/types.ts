@@ -2,11 +2,13 @@
 export interface User {
   id: string;
   name: string;
-  passcode: string;
-  data: any[]; 
-  statements?: Statement[];
-  endings?: Ending[];
-  entryMessage?: EntryMessage;
+  email: string;
+  role: 'user' | 'admin';
+  data: {
+    statements: Statement[];
+    endings: Ending[];
+    entryMessage: EntryMessage;
+  };
 }
 
 export interface Ending {

@@ -55,8 +55,10 @@ import { EndingMessageDialog } from './components/EndingMessageDialog';
 import { EntryMessageDialog } from './components/EntryMessageDialog';
 import { LoginScreen, AdminPanel } from './components/Auth';
 import { Button } from '@/components/ui/button';
-import { loadAuth, saveAuth, loadUserData, saveUserData } from './lib/auth';
-import { loadSoundPreference, setSoundEnabled, playSound, initAudio } from './lib/sound';
+import { onAuthStateChanged } from 'firebase/auth';
+import { auth } from '@/lib/firebase';
+import { fetchUserData, saveUserDataDebounced } from '@/lib/db';
+import { loadSoundPreference, playSound, initAudio } from './lib/sound';
 
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
