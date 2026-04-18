@@ -52,6 +52,7 @@ import {
 import { CSS } from '@dnd-kit/utilities';
 
 import { EndingMessageDialog } from './components/EndingMessageDialog';
+import { EntryMessageDialog } from './components/EntryMessageDialog';
 import { LoginScreen, AdminPanel } from './components/Auth';
 import { Button } from '@/components/ui/button';
 import { loadAuthData, saveAuthData } from './lib/auth';
@@ -85,6 +86,11 @@ import { cn } from '@/lib/utils';
 
 interface Ending {
   id: string;
+  title: string;
+  subtitle: string;
+}
+
+interface EntryMessage {
   title: string;
   subtitle: string;
 }
@@ -217,7 +223,7 @@ const DEFAULT_STATEMENTS: Statement[] = [
   }
 ];
 
-type AppMode = 'login' | 'admin' | 'builder' | 'viewer' | 'test';
+type AppMode = 'login' | 'admin' | 'builder' | 'viewer' | 'test' | 'loading';
 
 interface User {
   id: string;
@@ -608,11 +614,11 @@ const WRONG_MESSAGES = [
 ];
 
 const LOADING_MESSAGES = [
-  "Wait a bit Miss cutie...",
-  "Picking flowers...",
-  "Be patience my lady...",
-  "Pretty things take time...",
-  "What a cutie is waiting..."
+  "Wait a bit, Miss Cutie 💖",
+  "Picking flowers just for you 🌸",
+  "Be patient, my lady 🥺",
+  "Pretty things take time ✨",
+  "A cutie is waiting… how sweet 💕"
 ];
 
 // --- Main App ---
@@ -644,6 +650,14 @@ export default function App() {
   const [errorMessage, setErrorMessage] = useState('');
   const [saveStatus, setSaveStatus] = useState<'Saved 💾' | 'Saving...'>('Saved 💾');
   const [soundOn, setSoundOn] = useState(true);
+  const [entryMessage, setEntryMessage] = useState<EntryMessage>({
+    title: "Hey cutie 💖",
+    subtitle: "I made something for you… 🥺"
+  });
+  const [showEntryScreen, setShowEntryScreen] = useState(false);
+  const [showEntryDialog, setShowEntryDialog] = useState(false);
+  const [loadingText, setLoadingText] = useState("");
+  const [isExitingLoading, setIsExitingLoading] = useState(false);
   const [statementToDelete, setStatementToDelete] = useState<string | null>(null);
   const isDeletingRef = useRef(false);
 
@@ -653,7 +667,7 @@ export default function App() {
     const user = authData.users.find((u: User) => u.name === name && u.passcode === pass);
     if (user) {
       setCurrentUser(user);
-      setMode('viewer');
+      setMode('loading');
     } else {
       alert("Invalid login!");
     }
@@ -694,11 +708,23 @@ export default function App() {
   };
 
   const handleLogout = () => {
+    const isExitFromApp = isAdmin && (mode === 'builder' || mode === 'viewer' || mode === 'test');
+    
+    // Reset session-related state
     setCurrentUser(null);
-    setIsAdmin(false);
-    setMode('login');
     setEndingActive(false);
     setCurrentStatementId(null);
+    setShowWrongPopup(false);
+    setShowEndingModal(false);
+
+    if (isExitFromApp) {
+      // Admin returning to management panel
+      setMode('admin');
+    } else {
+      // User or Admin logging out completely
+      setIsAdmin(false);
+      setMode('login');
+    }
   };
 
   // Sensors for DND
@@ -709,7 +735,44 @@ export default function App() {
     })
   );
 
+  // --- Loading Logic ---
+  useEffect(() => {
+    if (mode === 'loading') {
+      setIsExitingLoading(false);
+      const randomIndex = Math.floor(Math.random() * LOADING_MESSAGES.length);
+      setLoadingText(LOADING_MESSAGES[randomIndex]);
+      playSound('swish');
+
+      const baseDelay = 1800 + Math.random() * 700; // 1800–2500ms
+      const delay = Math.max(1300, baseDelay * 0.75); // 1350–1875ms, min 1300ms
+
+      const fadeTimer = setTimeout(() => setIsExitingLoading(true), delay - 250);
+      const timer = setTimeout(() => {
+        // Reset states before viewer
+        setEndingActive(false);
+        setShowWrongPopup(false);
+        setCurrentEndingDisplay(null);
+        setCurrentStatementId(null);
+        setShowEntryScreen(true);
+        setMode('viewer');
+      }, delay);
+
+      return () => {
+        clearTimeout(timer);
+        clearTimeout(fadeTimer);
+      };
+    }
+  }, [mode]);
+
   // Core Effects
+  useEffect(() => {
+    // Global Mode Security Guard
+    if (mode === 'builder' && !isAdmin) {
+      console.warn("Unauthorized access to builder mode blocked.");
+      setMode('login');
+    }
+  }, [mode, isAdmin]);
+
   useEffect(() => {
     setSoundOn(loadSoundPreference());
     initAudio();
@@ -730,14 +793,27 @@ export default function App() {
       setStatements(userData.statements || []);
       setEndings(userData.endings || []);
       if (userData.ending) setEnding(userData.ending);
+      if (userData.entryMessage) {
+        setEntryMessage(userData.entryMessage);
+      } else {
+        setEntryMessage({
+          title: "Hey cutie 💖",
+          subtitle: "I made something for you… 🥺"
+        });
+      }
     } else {
       setStatements(DEFAULT_STATEMENTS);
       setEndings([]);
+      setEntryMessage({
+        title: "Hey cutie 💖",
+        subtitle: "I made something for you… 🥺"
+      });
     }
     
     setCurrentStatementId(null);
     setSelectedId(null);
     setEndingActive(false);
+    setShowEntryScreen(true);
   }, [currentUser]);
 
   useEffect(() => {
@@ -751,12 +827,12 @@ export default function App() {
       } catch(e) {}
       
       // @ts-ignore
-      allData[currentUser.id] = { statements, ending, endings };
+      allData[currentUser.id] = { statements, ending, endings, entryMessage };
       localStorage.setItem(DATA_KEY, JSON.stringify(allData));
       setSaveStatus('Saved 💾');
     }, 500);
     return () => clearTimeout(timer);
-  }, [statements, ending, endings, currentUser, isReady]);
+  }, [statements, ending, endings, entryMessage, currentUser, isReady]);
 
   useEffect(() => {
     setEndingActive(currentStatementId === 'END');
@@ -894,7 +970,8 @@ export default function App() {
     if (statements.length === 0) return;
     setCurrentStatementId(statements[0].id);
     setEndingActive(false);
-    setMode('viewer');
+    setMode('test');
+    setShowEntryScreen(true);
   };
 
   const exportConfig = () => {
@@ -974,6 +1051,123 @@ export default function App() {
     );
   }
 
+  if (mode === 'loading') {
+    return (
+      <div 
+        className={cn(
+          "min-h-screen flex flex-col items-center justify-center relative overflow-hidden transition-all duration-300 ease-in-out",
+          isExitingLoading ? "opacity-0 scale-95" : "opacity-100 scale-100"
+        )}
+      >
+        {/* Reuse app background layers */}
+        <div className="fixed inset-0 bg-background z-[-1]" />
+        <div 
+          className="fixed inset-0 z-[-1]" 
+          style={{
+            backgroundImage: 'radial-gradient(circle at 2px 2px, rgba(90, 62, 59, 0.03) 1px, transparent 0)',
+            backgroundSize: '24px 24px'
+          }}
+        />
+        
+        {/* Minimal Floating Elements */}
+        <div className="absolute inset-0 pointer-events-none overflow-hidden">
+          {[...Array(4)].map((_, i) => (
+            <motion.div
+              key={i}
+              initial={{ 
+                x: (i * 25 + 10) + '%', 
+                y: '110%',
+                opacity: 0,
+                scale: 0.8,
+              }}
+              animate={{ 
+                y: '-10%',
+                opacity: [0, 0.5, 0],
+                x: (i * 25 + 10) + (Math.sin(i) * 5) + '%' 
+              }}
+              transition={{ 
+                duration: 6 + Math.random() * 4, 
+                repeat: Infinity, 
+                ease: "linear",
+                delay: i * 2
+              }}
+              className="absolute text-2xl select-none"
+            >
+              {['💖', '✨', '🌸', '✨'][i % 4]}
+            </motion.div>
+          ))}
+        </div>
+
+        <motion.div 
+          initial={{ opacity: 0, y: 20 }} 
+          animate={{ opacity: 1, y: 0 }} 
+          exit={{ opacity: 0, scale: 0.95 }}
+          className="scrapbook-card max-w-[90%] w-[320px] flex flex-col items-center gap-8 relative z-10"
+        >
+          {/* Theme-consistent Bouncing Loader */}
+          <div className="relative">
+            <motion.div 
+              animate={{ 
+                scale: [1, 1.08, 1],
+                y: [0, -6, 0]
+              }}
+              transition={{ 
+                duration: 1.5, 
+                repeat: Infinity, 
+                ease: "easeInOut" 
+              }}
+              className="w-20 h-20 rounded-2xl bg-primary shadow-soft flex items-center justify-center relative z-20 border-2 border-dashed border-white/40"
+            >
+              <Heart className="w-10 h-10 text-white fill-white animate-pulse" />
+            </motion.div>
+            
+            <motion.div 
+              animate={{ 
+                scale: [1, 1.5],
+                opacity: [0.4, 0]
+              }}
+              transition={{ 
+                duration: 2, 
+                repeat: Infinity, 
+                ease: "easeOut" 
+              }}
+              className="absolute inset-0 rounded-2xl bg-primary/30 z-10"
+            />
+          </div>
+
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            className="space-y-4 text-center"
+          >
+            <p className="text-xl font-heading font-extrabold text-text-dark leading-tight">
+              {loadingText}
+            </p>
+            
+            {/* Minimal Dot Indicator */}
+            <div className="flex justify-center gap-1.5">
+              {[0, 1, 2].map(i => (
+                <motion.div
+                  key={i}
+                  animate={{ 
+                    scale: [1, 1.4, 1],
+                    opacity: [0.3, 1, 0.3] 
+                  }}
+                  transition={{ 
+                    duration: 1.2, 
+                    repeat: Infinity, 
+                    delay: i * 0.2 
+                  }}
+                  className="w-2.5 h-2.5 rounded-full bg-primary/60"
+                />
+              ))}
+            </div>
+          </motion.div>
+        </motion.div>
+      </div>
+    );
+  }
+
   if (mode === 'admin') {
     return (
       <div className="min-h-screen bg-background text-text-dark relative overflow-hidden flex flex-col">
@@ -1009,14 +1203,25 @@ export default function App() {
             <Button variant="ghost" size="icon" onClick={toggleSound} className="w-10 h-10 rounded-full text-primary">
               {soundOn ? <Volume2 className="w-5 h-5" /> : <VolumeX className="w-5 h-5" />}
             </Button>
-            <Button 
-              variant="ghost" 
-              size="icon" 
-              onClick={() => setMode(mode === 'builder' ? 'viewer' : 'builder')}
-              className="w-10 h-10 rounded-full text-primary"
-            >
-              {mode === 'builder' ? <Play className="w-5 h-5" /> : <Settings className="w-5 h-5" />}
-            </Button>
+            
+            {/* Play/Settings Toggle - Hidden in viewer, shown in test/builder for admin */}
+            {(mode === 'builder' || mode === 'test') && (
+              <Button 
+                variant="ghost" 
+                size="icon" 
+                onClick={() => {
+                  if (mode === 'builder') setMode('test');
+                  else if (isAdmin) setMode('builder');
+                }}
+                className={cn(
+                  "w-10 h-10 rounded-full text-primary",
+                  (mode === 'test' && !isAdmin) && "hidden"
+                )}
+              >
+                {mode === 'builder' ? <Play className="w-5 h-5" /> : <Settings className="w-5 h-5" />}
+              </Button>
+            )}
+
             <Button variant="ghost" size="icon" onClick={handleLogout} className="w-10 h-10 rounded-full text-primary">
               <RotateCcw className="w-5 h-5" />
             </Button>
@@ -1036,7 +1241,7 @@ export default function App() {
 
         <main className="w-full max-w-4xl relative z-10">
           <AnimatePresence mode="wait">
-            {mode === 'builder' ? (
+            {(mode === 'builder') ? (
               <motion.div
                 key="builder"
                 initial={{ opacity: 0, scale: 0.98 }}
@@ -1070,6 +1275,7 @@ export default function App() {
                       <input type="file" accept=".json" onChange={importConfig} className="absolute inset-0 opacity-0 cursor-pointer" />
                       <Button variant="ghost" className="rounded-full text-xs font-bold text-muted-foreground h-9"><Upload className="w-4 h-4 mr-2" /> Import</Button>
                     </div>
+                    <Button variant="ghost" onClick={() => setShowEntryDialog(true)} className="rounded-full text-xs font-bold text-muted-foreground h-9"><Sparkles className="w-4 h-4 mr-2" /> Intro</Button>
                     <Button variant="ghost" onClick={() => setShowEndingModal(true)} className="rounded-full text-xs font-bold text-muted-foreground h-9"><Heart className="w-4 h-4 mr-2" /> Endings</Button>
                   </div>
                 </div>
@@ -1113,15 +1319,46 @@ export default function App() {
                                           <span>{opt.isCorrect ? 'Correct ✨' : 'Wrong 🧸'}</span>
                                         </div>
                                         {opt.isCorrect ? (
-                                          <Select value={opt.nextId || 'END'} onValueChange={(v) => updateOption(statement.id, opt.id, { nextId: v === 'END' ? null : v })}>
-                                            <SelectTrigger className="w-[140px] h-8"><SelectValue /></SelectTrigger>
-                                            <SelectContent>
-                                              <SelectItem value="END">Ending 🏁</SelectItem>
-                                              {statements.filter(s => s.id !== statement.id).map((s, i) => (
-                                                <SelectItem key={s.id} value={s.id}>Next #{i+1}</SelectItem>
-                                              ))}
-                                            </SelectContent>
-                                          </Select>
+                                          <div className="flex flex-col gap-2 min-w-[140px]">
+                                            <Select 
+                                              value={opt.nextId || 'END'} 
+                                              onValueChange={(v) => {
+                                                const nextId = v === 'END' ? null : v;
+                                                updateOption(statement.id, opt.id, { 
+                                                  nextId,
+                                                  endingId: nextId ? null : opt.endingId
+                                                });
+                                              }}
+                                            >
+                                              <SelectTrigger className="h-8"><SelectValue placeholder="Next Step" /></SelectTrigger>
+                                              <SelectContent className="z-[9999]">
+                                                <SelectItem value="END">Ending 🏁</SelectItem>
+                                                {statements.filter(s => s.id !== statement.id).map((s, i) => (
+                                                  <SelectItem key={s.id} value={s.id}>
+                                                    Next #{statements.indexOf(s) + 1}
+                                                  </SelectItem>
+                                                ))}
+                                              </SelectContent>
+                                            </Select>
+
+                                            {/* Specific Ending Selector */}
+                                            {!opt.nextId && endings.length > 0 && (
+                                              <Select 
+                                                value={opt.endingId || 'GLOBAL'} 
+                                                onValueChange={(v) => updateOption(statement.id, opt.id, { endingId: v === 'GLOBAL' ? null : v })}
+                                              >
+                                                <SelectTrigger className="h-7 text-[10px] font-bold bg-primary/10 border-primary/20 text-primary rounded-lg">
+                                                  <SelectValue placeholder="Select Ending" />
+                                                </SelectTrigger>
+                                                <SelectContent className="z-[9999]">
+                                                  <SelectItem value="GLOBAL">Global Fallback 🏠</SelectItem>
+                                                  {endings.map((e) => (
+                                                    <SelectItem key={e.id} value={e.id}>{e.title}</SelectItem>
+                                                  ))}
+                                                </SelectContent>
+                                              </Select>
+                                            )}
+                                          </div>
                                         ) : (
                                           <Input 
                                             value={opt.wrongMessage}
@@ -1154,13 +1391,40 @@ export default function App() {
                 )}
               </motion.div>
             ) : (
-              <motion.div key="viewer" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="flex flex-col items-center justify-center min-h-[60vh] w-full">
+              <motion.div key={mode} initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="flex flex-col items-center justify-center min-h-[60vh] w-full">
                 <AnimatePresence mode="wait">
-                  {currentStatementId === 'END' ? (
+                  {showEntryScreen ? (
+                    <motion.div 
+                      key="entry" 
+                      initial={{ opacity: 0, scale: 0.95 }} 
+                      animate={{ opacity: 1, scale: 1 }} 
+                      exit={{ opacity: 0, scale: 1.05 }}
+                      className="text-center space-y-8 max-w-2xl px-6 py-12 bg-white/40 backdrop-blur-xl rounded-[48px] border border-white/50 shadow-premium"
+                    >
+                      <div className="w-24 h-24 bg-premium-gradient rounded-full flex items-center justify-center mx-auto mb-4 animate-pulse">
+                        <Heart className="w-12 h-12 text-white fill-current" />
+                      </div>
+                      <div className="space-y-4">
+                        <h1 className="text-5xl font-heading font-extrabold text-gradient leading-tight">{entryMessage.title}</h1>
+                        <p className="text-xl font-bold opacity-70 leading-relaxed font-sans">{entryMessage.subtitle}</p>
+                      </div>
+                      <Button 
+                        onClick={() => {
+                          setShowEntryScreen(false);
+                          playSound('swish');
+                        }} 
+                        className="pill-button bg-premium-gradient px-12 h-14 text-xl font-bold shadow-premium scale-110 hover:scale-115 transition-transform"
+                      >
+                        Start 💖
+                      </Button>
+                    </motion.div>
+                  ) : currentStatementId === 'END' ? (
                     <motion.div key="end" className="text-center space-y-6">
                       <h1 className="text-6xl font-heading font-extrabold text-gradient">{currentEndingDisplay?.title || ending.title}</h1>
                       <p className="text-2xl font-bold opacity-80">{currentEndingDisplay?.subtitle || ending.subtitle}</p>
-                      <Button onClick={() => setMode('builder')} className="pill-button bg-premium-gradient px-12">Edit 💖</Button>
+                      {(mode === 'test' || isAdmin) && (
+                        <Button onClick={() => setMode('builder')} className="pill-button bg-premium-gradient px-12">Edit 💖</Button>
+                      )}
                     </motion.div>
                   ) : currentStatement ? (
                     <motion.div key={currentStatement.id} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -10 }} className="w-full max-w-lg">
@@ -1207,6 +1471,13 @@ export default function App() {
       </Dialog>
       
       <EndingMessageDialog open={showEndingModal} onOpenChange={setShowEndingModal} ending={ending} setEnding={setEnding} endings={endings} setEndings={setEndings} />
+      
+      <EntryMessageDialog 
+        open={showEntryDialog} 
+        onOpenChange={setShowEntryDialog} 
+        entryMessage={entryMessage} 
+        setEntryMessage={setEntryMessage} 
+      />
 
       <Dialog open={showErrorDialog} onOpenChange={setShowErrorDialog}>
         <DialogContent className="sm:max-w-[400px] rounded-[28px] p-10 text-center">
