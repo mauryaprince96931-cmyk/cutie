@@ -158,8 +158,10 @@ const SortableItem = ({ id, children }: SortableItemProps) => {
 
 // --- Constants ---
 
-const STORAGE_KEY = 'cuteMessageAppData';
+const AUTH_KEY = 'cute_app_auth';
+const DATA_KEY = 'cute_app_data';
 
+// --- Loading Component ---
 const LoadingMessage = () => {
   const [index, setIndex] = useState(() => Math.floor(Math.random() * LOADING_MESSAGES.length));
 
@@ -609,19 +611,43 @@ const LOADING_MESSAGES = [
   "Wait a bit Miss cutie...",
   "Picking flowers...",
   "Be patience my lady...",
-  "Pretty things takes time...",
+  "Pretty things take time...",
   "What a cutie is waiting..."
 ];
 
 // --- Main App ---
 
 export default function App() {
+  // 1. All hooks at the top level
   const [mode, setMode] = useState<AppMode>('login');
   const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [isAdmin, setIsAdmin] = useState(false);
   const [users, setUsers] = useState<User[]>([]);
+  const [builderView, setBuilderView] = useState<BuilderView>('LIST');
+  const [isReady, setIsReady] = useState(false);
+  const [statements, setStatements] = useState<Statement[]>([]);
+  const [endings, setEndings] = useState<Ending[]>([]);
+  const [ending, setEnding] = useState<{ title: string; subtitle: string }>({
+    title: "You chose love 💖",
+    subtitle: "I knew you would… 🥺"
+  });
+  const [hasError, setHasError] = useState(false);
+  const [endingActive, setEndingActive] = useState(false);
+  const [currentEndingDisplay, setCurrentEndingDisplay] = useState<{title: string, subtitle: string} | null>(null);
+  const [showEndingModal, setShowEndingModal] = useState(false);
+  const [currentStatementId, setCurrentStatementId] = useState<string | null>(null);
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [showWrongPopup, setShowWrongPopup] = useState(false);
+  const [wrongMessage, setWrongMessage] = useState('');
+  const [lastWrongMsgIndex, setLastWrongMsgIndex] = useState<number | null>(null);
+  const [showErrorDialog, setShowErrorDialog] = useState(false);
+  const [errorMessage, setErrorMessage] = useState('');
+  const [saveStatus, setSaveStatus] = useState<'Saved 💾' | 'Saving...'>('Saved 💾');
+  const [soundOn, setSoundOn] = useState(true);
+  const [statementToDelete, setStatementToDelete] = useState<string | null>(null);
+  const isDeletingRef = useRef(false);
 
-  // Implementation of auth handlers
+  // Auth Handlers
   const handleUserLogin = (name: string, pass: string) => {
     const authData = loadAuthData();
     const user = authData.users.find((u: User) => u.name === name && u.passcode === pass);
@@ -632,6 +658,7 @@ export default function App() {
       alert("Invalid login!");
     }
   };
+
   const handleAdminLogin = (pass: string) => {
     const authData = loadAuthData();
     if (authData.admin.passcode === pass) {
@@ -662,142 +689,108 @@ export default function App() {
     
   const handleEnterBuilder = (user: User) => {
     console.log("Opening builder for:", user);
-    
-    // Ensure data exists
-    if (!user.data) {
-        user.data = [];
-    }
-
     setCurrentUser(user);
     setMode('builder');
   };
 
-  if (mode === 'login') {
-    return <LoginScreen onLogin={handleUserLogin} onAdminLogin={handleAdminLogin} />;
-  }
+  const handleLogout = () => {
+    setCurrentUser(null);
+    setIsAdmin(false);
+    setMode('login');
+    setEndingActive(false);
+    setCurrentStatementId(null);
+  };
 
-  if (mode === 'admin') {
-    return <AdminPanel users={users} onCreateUser={handleCreateUser} onEnterBuilder={handleEnterBuilder} onDeleteUser={handleDeleteUser} />;
-  }
+  // Sensors for DND
+  const sensors = useSensors(
+    useSensor(PointerSensor),
+    useSensor(KeyboardSensor, {
+      coordinateGetter: sortableKeyboardCoordinates,
+    })
+  );
 
-  // Rest of the App component...
-  const [builderView, setBuilderView] = useState<BuilderView>('LIST');
-  const [isReady, setIsReady] = useState(false);
-  const [statements, setStatements] = useState<Statement[]>(currentUser?.data || []);
+  // Core Effects
+  useEffect(() => {
+    setSoundOn(loadSoundPreference());
+    initAudio();
+    setIsReady(true);
+  }, []);
 
   useEffect(() => {
-    if (currentUser) {
-        setStatements(currentUser.data || []);
+    if (!currentUser) return;
+
+    let allData = {};
+    try {
+      allData = JSON.parse(localStorage.getItem(DATA_KEY) || '{}');
+    } catch(e) {}
+    
+    // @ts-ignore
+    const userData = allData[currentUser.id];
+    if (userData) {
+      setStatements(userData.statements || []);
+      setEndings(userData.endings || []);
+      if (userData.ending) setEnding(userData.ending);
+    } else {
+      setStatements(DEFAULT_STATEMENTS);
+      setEndings([]);
     }
+    
+    setCurrentStatementId(null);
+    setSelectedId(null);
+    setEndingActive(false);
   }, [currentUser]);
 
-  // Sync back to currentUser on change
   useEffect(() => {
-    if (currentUser) {
-        currentUser.data = statements;
-        const authData = loadAuthData();
-        const userIndex = authData.users.findIndex((u: User) => u.id === currentUser.id);
-        if (userIndex !== -1) {
-            authData.users[userIndex].data = statements;
-            saveAuthData(authData);
-        }
-    }
-  }, [statements]);
-  const [endings, setEndings] = useState<Ending[]>([]);
-  const [ending, setEnding] = useState<{ title: string; subtitle: string }>({
-    title: "You chose love 💖",
-    subtitle: "I knew you would… 🥺"
-  });
-  const [hasError, setHasError] = useState(false);
-  const [endingActive, setEndingActive] = useState(false);
-  const [currentEndingDisplay, setCurrentEndingDisplay] = useState<{title: string, subtitle: string} | null>(null);
-  const [showEndingModal, setShowEndingModal] = useState(false);
-  
-  // Manage body classes for UI isolation
+    if (!currentUser || !isReady) return;
+
+    setSaveStatus('Saving...');
+    const timer = setTimeout(() => {
+      let allData = {};
+      try {
+        allData = JSON.parse(localStorage.getItem(DATA_KEY) || '{}');
+      } catch(e) {}
+      
+      // @ts-ignore
+      allData[currentUser.id] = { statements, ending, endings };
+      localStorage.setItem(DATA_KEY, JSON.stringify(allData));
+      setSaveStatus('Saved 💾');
+    }, 500);
+    return () => clearTimeout(timer);
+  }, [statements, ending, endings, currentUser, isReady]);
+
+  useEffect(() => {
+    setEndingActive(currentStatementId === 'END');
+  }, [currentStatementId]);
+
   useEffect(() => {
     document.body.classList.toggle('ending-active', endingActive);
     document.body.classList.toggle('ending-panel-open', showEndingModal);
   }, [endingActive, showEndingModal]);
 
-  const [currentStatementId, setCurrentStatementId] = useState<string | null>(null);
-  const [selectedId, setSelectedId] = useState<string | null>(null);
-  const [showWrongPopup, setShowWrongPopup] = useState(false);
-  const [wrongMessage, setWrongMessage] = useState('');
-  const [lastWrongMsgIndex, setLastWrongMsgIndex] = useState<number | null>(null);
-  const [showErrorDialog, setShowErrorDialog] = useState(false);
-  const [errorMessage, setErrorMessage] = useState('');
-  const [saveStatus, setSaveStatus] = useState<'Saved 💾' | 'Saving...'>('Saved 💾');
-  const [soundOn, setSoundOn] = useState(true);
-  const [statementToDelete, setStatementToDelete] = useState<string | null>(null);
-  const isDeletingRef = useRef(false);
-
-  // Load on start
   useEffect(() => {
-    setSoundOn(loadSoundPreference());
-    
-    const saved = localStorage.getItem('cute_app_data');
-    if (saved) {
-      try {
-        const parsed = JSON.parse(saved);
-        if (parsed.ending) setEnding(parsed.ending);
-        
-        let loadedEndings: Ending[] = parsed.endings || [];
-        let loadedStatements: Statement[] = parsed.statements || [];
-
-        // MIGRATION: Auto-convert inline option.ending -> centralized endings
-        let needsSave = false;
-        loadedStatements = loadedStatements.map(stmt => {
-          return {
-            ...stmt,
-            options: stmt.options.map(opt => {
-              if (opt.ending && !opt.endingId) {
-                const newEndingId = `end-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
-                loadedEndings.push({
-                  id: newEndingId,
-                  title: opt.ending.title,
-                  subtitle: opt.ending.subtitle
-                });
-                needsSave = true;
-                return {
-                  ...opt,
-                  endingId: newEndingId
-                };
-              }
-              return opt;
-            })
-          };
-        });
-
-        setEndings(loadedEndings);
-        setStatements(loadedStatements);
-        
-        if (needsSave) {
-          localStorage.setItem('cute_app_data', JSON.stringify({ statements: loadedStatements, ending: parsed.ending, endings: loadedEndings }));
-        }
-
-      } catch (e) {
-        console.error('Failed to parse saved data', e);
-      }
-    } else {
-      // Only set defaults if no data exists at all (first run)
-      setStatements(DEFAULT_STATEMENTS);
-    }
+    const handleError = (event: ErrorEvent) => {
+      console.error('Caught global error:', event.error);
+      setHasError(true);
+    };
+    window.addEventListener('error', handleError);
+    return () => window.removeEventListener('error', handleError);
   }, []);
 
-  // Sync endingActive
-  useEffect(() => {
-    setEndingActive(currentStatementId === 'END');
-  }, [currentStatementId]);
-
-  // Debounced Save
-  useEffect(() => {
-    setSaveStatus('Saving...');
-    const timer = setTimeout(() => {
-      localStorage.setItem('cute_app_data', JSON.stringify({ statements, ending, endings }));
-      setSaveStatus('Saved 💾');
-    }, 500);
-    return () => clearTimeout(timer);
-  }, [statements, ending, endings]);
+  const validationErrors = useMemo(() => {
+    const errors: ValidationError[] = [];
+    const statementIds = new Set(statements.map(s => s.id));
+    statements.forEach(s => {
+      if (!s.text.trim()) errors.push({ statementId: s.id, field: 'text', message: 'Question text is required' });
+      if (s.options.length < 2) errors.push({ statementId: s.id, field: 'options', message: 'At least 2 options are required' });
+      if (!s.options.some(opt => opt.isCorrect)) errors.push({ statementId: s.id, field: 'options', message: 'At least one correct option needed' });
+      s.options.forEach(opt => {
+        if (!opt.text.trim()) errors.push({ statementId: s.id, optionId: opt.id, field: 'optionText', message: 'Option text required' });
+        if (!opt.isCorrect && !opt.wrongMessage.trim()) errors.push({ statementId: s.id, optionId: opt.id, field: 'wrongMessage', message: 'Oops message required' });
+        if (opt.isCorrect && opt.nextId && !statementIds.has(opt.nextId)) errors.push({ statementId: s.id, optionId: opt.id, field: 'nextId', message: 'Invalid next statement' });
+      });
+    });
+    return errors;
+  }, [statements]);
 
   const toggleSound = () => {
     const newState = !soundOn;
@@ -808,144 +801,6 @@ export default function App() {
       playSound('click');
     }
   };
-
-  const validationErrors = useMemo(() => {
-    const errors: ValidationError[] = [];
-    const statementIds = new Set(statements.map(s => s.id));
-
-    statements.forEach(s => {
-      if (!s.text.trim()) {
-        errors.push({ statementId: s.id, field: 'text', message: 'Question text is required' });
-      }
-      if (s.options.length < 2) {
-        errors.push({ statementId: s.id, field: 'options', message: 'At least 2 options are required' });
-      }
-      if (!s.options.some(opt => opt.isCorrect)) {
-        errors.push({ statementId: s.id, field: 'options', message: 'At least one correct option needed' });
-      }
-
-      s.options.forEach(opt => {
-        if (!opt.text.trim()) {
-          errors.push({ statementId: s.id, optionId: opt.id, field: 'optionText', message: 'Option text required' });
-        }
-        if (!opt.isCorrect && !opt.wrongMessage.trim()) {
-          errors.push({ statementId: s.id, optionId: opt.id, field: 'wrongMessage', message: 'Oops message required' });
-        }
-        if (opt.isCorrect && opt.nextId && !statementIds.has(opt.nextId)) {
-          errors.push({ statementId: s.id, optionId: opt.id, field: 'nextId', message: 'Invalid next statement' });
-        }
-      });
-    });
-    return errors;
-  }, [statements]);
-
-  // Initial Data Load with Validation
-  useEffect(() => {
-    const loadData = () => {
-      try {
-        console.log('Loading app data...');
-        const saved = localStorage.getItem(STORAGE_KEY);
-        
-        if (!saved) {
-          console.log('No saved data, using defaults.');
-          setStatements(DEFAULT_STATEMENTS);
-          setIsReady(true);
-          return;
-        }
-
-        const parsed = JSON.parse(saved);
-        
-        // Validation: Must be a non-empty array
-        if (!Array.isArray(parsed) || parsed.length === 0) {
-          throw new Error('Data is not a valid array or is empty');
-        }
-
-        // Deep Validation: Check first item structure
-        const first = parsed[0];
-        if (!first.id || !first.text || !Array.isArray(first.options)) {
-          throw new Error('Data structure is invalid');
-        }
-
-        setStatements(parsed);
-        console.log('Data loaded successfully.');
-      } catch (err) {
-        console.error('Critical: Failed to load or validate data:', err);
-        // If data is corrupted, clear it and use defaults
-        localStorage.removeItem(STORAGE_KEY);
-        setStatements(DEFAULT_STATEMENTS);
-      } finally {
-        setIsReady(true);
-      }
-    };
-
-    loadData();
-  }, []);
-
-  // Cleanup invalid nextId references when statements are deleted
-  useEffect(() => {
-    if (!isReady || statements.length === 0) return;
-    
-    const statementIds = new Set(statements.map(s => s.id));
-    let hasChanges = false;
-    
-    const cleanedStatements = statements.map(s => {
-      let optionsChanged = false;
-      const cleanedOptions = s.options.map(opt => {
-        if (opt.nextId && !statementIds.has(opt.nextId)) {
-          optionsChanged = true;
-          hasChanges = true;
-          return { ...opt, nextId: null };
-        }
-        return opt;
-      });
-      
-      if (optionsChanged) {
-        return { ...s, options: cleanedOptions };
-      }
-      return s;
-    });
-    
-    if (hasChanges) {
-      setStatements(cleanedStatements);
-    }
-  }, [statements, isReady]);
-
-  // Global Error Catcher (Functional)
-  useEffect(() => {
-    const handleError = (event: ErrorEvent) => {
-      console.error('Caught global error:', event.error);
-      setHasError(true);
-    };
-
-    window.addEventListener('error', handleError);
-    return () => window.removeEventListener('error', handleError);
-  }, []);
-
-  // Save to localStorage whenever statements change
-  useEffect(() => {
-    if (!isReady || statements.length === 0) return;
-    
-    try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(statements));
-    } catch (err) {
-      console.error('Failed to save data to localStorage:', err);
-    }
-  }, [statements, isReady]);
-
-  // Reset selected ID when statement changes
-  useEffect(() => {
-    setSelectedId(null);
-  }, [currentStatementId]);
-
-  // Sensors for DND
-  const sensors = useSensors(
-    useSensor(PointerSensor),
-    useSensor(KeyboardSensor, {
-      coordinateGetter: sortableKeyboardCoordinates,
-    })
-  );
-
-  // --- Handlers ---
 
   const addStatement = () => {
     const newId = Math.random().toString(36).substr(2, 9);
@@ -1037,33 +892,9 @@ export default function App() {
 
   const startViewer = () => {
     if (statements.length === 0) return;
-    
-    // Validation: Each statement must have at least one correct option
-    const invalidStatement = statements.find(s => !s.options.some(opt => opt.isCorrect));
-    if (invalidStatement) {
-      setErrorMessage(`Statement "${invalidStatement.text.substring(0, 30)}..." needs at least one correct option! ✨`);
-      setShowErrorDialog(true);
-      return;
-    }
-
-    // Validation: No empty option text
-    const emptyOptionStatement = statements.find(s => s.options.some(opt => !opt.text.trim()));
-    if (emptyOptionStatement) {
-      setErrorMessage(`One of your statements has an empty option! Please add some text. 🧸`);
-      setShowErrorDialog(true);
-      return;
-    }
-
     setCurrentStatementId(statements[0].id);
     setEndingActive(false);
-    setMode('VIEWER');
-  };
-
-  const resetBuilder = () => {
-    if (confirm('Are you sure you want to reset everything? This will clear all your progress.')) {
-      setStatements(DEFAULT_STATEMENTS);
-      localStorage.removeItem('cute_app_data');
-    }
+    setMode('viewer');
   };
 
   const exportConfig = () => {
@@ -1083,26 +914,16 @@ export default function App() {
     reader.onload = (event) => {
       try {
         const json = JSON.parse(event.target?.result as string);
-        if (!Array.isArray(json)) {
-          throw new Error('Invalid file format. The configuration should be a list of statements.');
-        }
+        if (!Array.isArray(json)) throw new Error('Invalid format');
         setStatements(json);
       } catch (err) {
-        setErrorMessage(err instanceof Error ? err.message : 'The file you uploaded is not a valid JSON configuration.');
+        setErrorMessage('Invalid configuration file.');
         setShowErrorDialog(true);
       }
     };
     reader.readAsText(file);
-    // Reset the input so the same file can be selected again if fixed
     e.target.value = '';
   };
-
-  // --- Viewer Logic ---
-
-  const currentStatement = useMemo(() => 
-    statements.find(s => s.id === currentStatementId), 
-    [statements, currentStatementId]
-  );
 
   const createRipple = (x: number, y: number) => {
     playSound('ripple');
@@ -1110,13 +931,6 @@ export default function App() {
     if (!layer) return;
     const ripple = document.createElement('div');
     ripple.className = 'ripple';
-    const gradients = [
-      'radial-gradient(circle, #FF9AA2 0%, #FFB7B2 100%)',
-      'radial-gradient(circle, #FEC8D8 0%, #FF9CEE 100%)',
-      'radial-gradient(circle, #FFD6A5 0%, #FFAAA5 100%)'
-    ];
-    ripple.style.background = gradients[Math.floor(Math.random() * gradients.length)];
-    // Adjust coordinates relative to the layer which is inset: 0
     ripple.style.left = `${x - 50}px`;
     ripple.style.top = `${y - 50}px`;
     layer.appendChild(ripple);
@@ -1127,209 +941,90 @@ export default function App() {
     if (endingActive) return;
     if (!option) return;
     
-    // Play interaction sound based on correctness or if it brings you to ending
-    const isEndingBound = option.endingId || option.ending || (option.isCorrect && !option.nextId);
-    
-    if (isEndingBound) {
-      playSound('ending');
-    } else if (option.isCorrect) {
-      playSound('correct');
-    } else {
-      playSound('wrong');
-    }
-    
-    // 1. Centralized Ending
-    if (option.endingId) {
-      if (x !== undefined && y !== undefined && option.isCorrect) createRipple(x, y);
-      const selectedEnding = endings.find(e => e.id === option.endingId);
-      if (selectedEnding) setCurrentEndingDisplay(selectedEnding);
-      setTimeout(() => {
-        setEndingActive(true);
-        setCurrentStatementId('END');
-      }, option.isCorrect ? 300 : 0);
-      return;
-    }
-
-    // 2. Legacy Inline Ending
-    if (option.ending) {
-      if (x !== undefined && y !== undefined && option.isCorrect) createRipple(x, y);
-      setCurrentEndingDisplay(option.ending);
-      setTimeout(() => {
-        setEndingActive(true);
-        setCurrentStatementId('END');
-      }, option.isCorrect ? 300 : 0);
-      return;
-    }
-
-    if (option.isCorrect && !option.nextId) {
-      setCurrentEndingDisplay(null); // use global fallback
-      setEndingActive(true);
-      setCurrentStatementId('END');
-      return;
-    }
-    
     if (option.isCorrect) {
-      if (option.nextId) {
-        // Trigger ripple
-        if (x !== undefined && y !== undefined) createRipple(x, y);
-        // Safety check: Does the next statement actually exist?
-        const exists = statements.some(s => s.id === option.nextId);
-        if (exists) {
-          setTimeout(() => setCurrentStatementId(option.nextId!), 300);
-        } else {
-          console.warn(`Statement with ID ${option.nextId} not found. Ending sequence.`);
-          setCurrentEndingDisplay(null);
+      if (x !== undefined && y !== undefined) createRipple(x, y);
+      if (option.endingId || option.ending || !option.nextId) {
+        const endData = (option.endingId ? endings.find(e => e.id === option.endingId) : option.ending) || ending;
+        setCurrentEndingDisplay(endData);
+        setTimeout(() => {
           setEndingActive(true);
           setCurrentStatementId('END');
-        }
+        }, 300);
+        playSound('ending');
       } else {
-        setCurrentEndingDisplay(null);
-        setEndingActive(true);
-        setCurrentStatementId('END');
+        setTimeout(() => setCurrentStatementId(option.nextId!), 300);
+        playSound('correct');
       }
     } else {
-      if (option.wrongMessage) {
-        setWrongMessage(option.wrongMessage);
-      } else {
-        let nextIndex;
-        do {
-          nextIndex = Math.floor(Math.random() * WRONG_MESSAGES.length);
-        } while (nextIndex === lastWrongMsgIndex && WRONG_MESSAGES.length > 1);
-        
-        setLastWrongMsgIndex(nextIndex);
-        setWrongMessage(WRONG_MESSAGES[nextIndex]);
-      }
+      setWrongMessage(option.wrongMessage || WRONG_MESSAGES[Math.floor(Math.random() * WRONG_MESSAGES.length)]);
       setShowWrongPopup(true);
+      playSound('wrong');
     }
   };
 
-  if (hasError) {
+  const currentStatement = statements.find(s => s.id === currentStatementId) || statements[0];
+
+  // Screen Returns
+  if (mode === 'login') {
     return (
-      <div className="min-h-screen flex flex-col items-center justify-center p-4 bg-background text-text-dark text-center relative overflow-hidden">
+      <div className="min-h-screen flex flex-col items-center justify-center bg-background text-text-dark relative overflow-hidden">
         <FloatingElements />
-        <div className="text-8xl mb-8 animate-bounce">🥺</div>
-        <h1 className="text-4xl font-heading font-extrabold mb-4 text-gradient">Something went wrong!</h1>
-        <p className="mb-10 max-w-md opacity-70 font-semibold text-lg">
-          The app encountered an unexpected error. Don't worry, your data is likely safe! ✨
-        </p>
-        <Button 
-          onClick={() => {
-            localStorage.removeItem(STORAGE_KEY);
-            window.location.reload();
-          }}
-          className="pill-button bg-premium-gradient"
-        >
-          Reset App & Try Again 💖
-        </Button>
+        <LoginScreen onLogin={handleUserLogin} onAdminLogin={handleAdminLogin} />
+      </div>
+    );
+  }
+
+  if (mode === 'admin') {
+    return (
+      <div className="min-h-screen bg-background text-text-dark relative overflow-hidden flex flex-col">
+        <FloatingElements />
+        <div className="flex justify-between items-center p-6 border-b border-secondary/20 bg-white/50 backdrop-blur-md">
+           <h1 className="text-xl font-bold font-heading text-primary">Cute Admin</h1>
+           <Button variant="outline" onClick={handleLogout} className="rounded-full">Logout 🚪</Button>
+        </div>
+        <ScrollArea className="flex-grow">
+          <AdminPanel users={users} onCreateUser={handleCreateUser} onEnterBuilder={handleEnterBuilder} onDeleteUser={handleDeleteUser} />
+        </ScrollArea>
       </div>
     );
   }
 
   if (!isReady) {
     return (
-      <motion.div 
-        initial={{ opacity: 1 }}
-        exit={{ opacity: 0 }}
-        transition={{ duration: 0.2 }}
-        className="min-h-screen flex flex-col items-center justify-center p-6 bg-gradient-to-b from-[#FFF2E0] to-[#FFC0CB] text-text-dark relative overflow-hidden"
-      >
-        <FloatingElements />
-        
-        <div className="relative flex flex-col items-center">
-          {/* Main Loader: Refined Floating Heart */}
-          <div className="relative mb-10 w-24 h-24 flex items-center justify-center">
-            <motion.div
-              animate={{ 
-                y: [0, -8, 0],
-                scale: [0.96, 1, 0.96],
-              }}
-              transition={{ 
-                duration: 1.8, 
-                repeat: Infinity, 
-                ease: "easeInOut" 
-              }}
-              className="relative z-10 w-20 h-20 bg-premium-gradient rounded-[2rem] flex items-center justify-center shadow-premium ring-4 ring-white/50 backdrop-blur-sm"
-            >
-              <Heart className="w-10 h-10 text-white fill-white drop-shadow-sm" />
-            </motion.div>
-            
-            {/* Tiny secondary floating elements (Hearts & Sparkles) */}
-            {[0, 1, 2].map((i) => (
-              <motion.div
-                key={i}
-                initial={{ opacity: 0, y: 20, scale: 0.5 }}
-                animate={{ 
-                  opacity: [0, 1, 0],
-                  y: [-10, -60],
-                  x: [(i - 1) * 40, (i - 1) * 50 + (i === 1 ? 0 : (i === 0 ? -15 : 15))],
-                  scale: [0.5, 1, 0.8]
-                }}
-                transition={{
-                  duration: 2.2,
-                  repeat: Infinity,
-                  delay: i * 0.7,
-                  ease: "easeOut"
-                }}
-                className="absolute text-accent"
-              >
-                {i % 2 === 0 ? <Heart className="w-4 h-4 fill-current" /> : <Sparkles className="w-5 h-5" />}
-              </motion.div>
-            ))}
-          </div>
-
-          {/* Loading Text */}
-          <div className="text-center space-y-3">
-            <LoadingMessage />
-            
-            <motion.p 
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 0.6 }}
-              transition={{ delay: 0.4 }}
-              className="text-[11px] font-bold uppercase tracking-[2px] text-text-dark/40"
-            >
-              Almost ready…
-            </motion.p>
-          </div>
-
-          {/* Progress Indicator: Sequential Bouncing Dots */}
-          <div className="mt-10 flex gap-2.5">
-            {[0, 1, 2].map(i => (
-              <motion.div
-                key={i}
-                animate={{ 
-                  y: [0, -8, 0],
-                  opacity: [0.3, 1, 0.3],
-                  scale: [0.9, 1.1, 0.9]
-                }}
-                transition={{ 
-                  duration: 0.8, 
-                  repeat: Infinity, 
-                  delay: i * 0.15,
-                  ease: "easeInOut" 
-                }}
-                className="w-2.5 h-2.5 rounded-full bg-accent/60 shadow-sm"
-              />
-            ))}
-          </div>
-        </div>
-      </motion.div>
+      <div className="min-h-screen flex items-center justify-center bg-background">
+        <LoadingMessage />
+      </div>
     );
   }
 
-  // Final safety check for statements removed
-  
   return (
-    <div className="min-h-screen relative">
-      <div className="bg-animation-layer" id="bg-animation-layer" />
-      <div className="relative z-10 p-4 md:p-8 pb-24 flex flex-col items-center overflow-x-hidden">
+    <div className="min-h-screen relative overflow-x-hidden bg-background">
+      <div className="bg-animation-layer fixed inset-0 pointer-events-none" id="bg-animation-layer" />
+      <div className="relative z-10 p-4 md:p-8 pb-24 flex flex-col items-center">
         <FloatingElements />
-        {/* Header */}
-        <motion.header 
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          transition={{ duration: 0.2 }}
-          className="text-center mb-12 space-y-2"
-        >
+        
+        {/* Header Controls */}
+        <div className="fixed top-6 left-6 right-6 flex justify-between items-center z-[5000]">
+          <div className="flex bg-white/80 backdrop-blur-sm p-1.5 rounded-full shadow-premium border border-primary/20">
+            <Button variant="ghost" size="icon" onClick={toggleSound} className="w-10 h-10 rounded-full text-primary">
+              {soundOn ? <Volume2 className="w-5 h-5" /> : <VolumeX className="w-5 h-5" />}
+            </Button>
+            <Button 
+              variant="ghost" 
+              size="icon" 
+              onClick={() => setMode(mode === 'builder' ? 'viewer' : 'builder')}
+              className="w-10 h-10 rounded-full text-primary"
+            >
+              {mode === 'builder' ? <Play className="w-5 h-5" /> : <Settings className="w-5 h-5" />}
+            </Button>
+            <Button variant="ghost" size="icon" onClick={handleLogout} className="w-10 h-10 rounded-full text-primary">
+              <RotateCcw className="w-5 h-5" />
+            </Button>
+          </div>
+        </div>
+
+        {/* Logo */}
+        <header className="text-center mb-12 space-y-2 mt-20">
           <div className="flex items-center justify-center gap-3">
             <Sparkles className="w-8 h-8 text-primary" />
             <h1 className="text-5xl md:text-6xl font-heading font-extrabold tracking-tight text-gradient">
@@ -1337,659 +1032,205 @@ export default function App() {
             </h1>
             <Heart className="w-8 h-8 text-primary fill-primary" />
           </div>
-        </motion.header>
+        </header>
 
-      <main className="w-full max-w-4xl relative z-10">
-        <AnimatePresence mode="wait">
-          {mode === 'BUILDER' ? (
-            <motion.div
-              key="builder"
-              initial={{ opacity: 0, scale: 0.98 }}
-              animate={{ opacity: 1, scale: 1 }}
-              exit={{ opacity: 0, scale: 0.98 }}
-              transition={{ duration: 0.15, ease: [0.22, 1, 0.36, 1] }}
-              className="space-y-8"
-              style={{ willChange: 'transform, opacity' }}
-            >
-              {/* Toolbar */}
-              <div className="bottom-controls builder-controls bg-white/90 backdrop-blur-md p-5 rounded-[32px] shadow-soft sticky top-4 z-10 border border-white/50 space-y-4">
-                {/* Row 1: Primary Status & Action */}
-                <div className="flex items-center justify-between">
-                  {/* Status Badge */}
-                  <div className={cn(
-                    "flex items-center gap-2 px-4 py-1.5 rounded-full border transition-all duration-300",
-                    validationErrors.length > 0 
-                      ? "bg-accent/5 border-accent/20 text-accent" 
-                      : "bg-highlight/5 border-highlight/20 text-highlight"
-                  )}>
-                    {validationErrors.length > 0 ? (
-                      <>
-                        <AlertCircle className="w-3.5 h-3.5 animate-pulse" />
-                        <span className="text-[10px] font-bold uppercase tracking-widest">
-                          {validationErrors.length} {validationErrors.length === 1 ? 'Error' : 'Errors'} 💔
-                        </span>
-                      </>
-                    ) : (
-                      <>
-                        <CheckCircle2 className="w-3.5 h-3.5" />
-                        <span className="text-[10px] font-bold uppercase tracking-widest">
-                          Ready 💖
-                        </span>
-                      </>
-                    )}
-                  </div>
+        <main className="w-full max-w-4xl relative z-10">
+          <AnimatePresence mode="wait">
+            {mode === 'builder' ? (
+              <motion.div
+                key="builder"
+                initial={{ opacity: 0, scale: 0.98 }}
+                animate={{ opacity: 1, scale: 1 }}
+                exit={{ opacity: 0, scale: 0.98 }}
+                className="space-y-8"
+              >
+                {/* Toolbar */}
+                <div className="bg-white/90 backdrop-blur-md p-5 rounded-[32px] shadow-soft sticky top-4 z-10 border border-white/50 space-y-4">
+                  <div className="flex items-center justify-between">
+                    <div className={cn(
+                      "flex items-center gap-2 px-4 py-1.5 rounded-full border",
+                      validationErrors.length > 0 ? "bg-accent/5 border-accent/20 text-accent" : "bg-highlight/5 border-highlight/20 text-highlight"
+                    )}>
+                      <span className="text-[10px] font-bold uppercase tracking-widest">
+                        {validationErrors.length > 0 ? `${validationErrors.length} Errors 💔` : 'Ready 💖'}
+                      </span>
+                    </div>
 
-                  {/* Main Action */}
-                  <Button 
-                    onClick={() => {
-                      if (validationErrors.length > 0) {
-                        setErrorMessage(`Please fix ${validationErrors.length} error(s) before continuing! 💔`);
-                        setShowErrorDialog(true);
-                      } else {
-                        startViewer();
-                      }
-                    }} 
-                    className={cn(
-                      "pill-button font-bold text-sm px-6 h-10 transition-all duration-300",
-                      validationErrors.length === 0 ? "bg-premium-gradient shadow-lg shadow-primary/20" : "bg-secondary text-muted-foreground"
-                    )}
-                  >
-                    Finish & Run ▶
-                  </Button>
-                </div>
-
-                {/* Divider Line */}
-                <div className="h-px bg-secondary/20 w-full" />
-
-                {/* Row 2: Secondary Actions */}
-                <div className="flex items-center justify-center gap-3">
-                  <Button variant="ghost" onClick={exportConfig} className="rounded-full hover:bg-primary/10 text-xs font-bold text-muted-foreground h-9 px-4">
-                    <Download className="w-4 h-4 mr-2" /> Export
-                  </Button>
-                  
-                  <div className="relative">
-                    <input 
-                      type="file" 
-                      accept=".json" 
-                      onChange={importConfig} 
-                      className="absolute inset-0 opacity-0 cursor-pointer"
-                    />
-                    <Button variant="ghost" className="rounded-full hover:bg-primary/10 text-xs font-bold text-muted-foreground h-9 px-4">
-                      <Upload className="w-4 h-4 mr-2" /> Import
+                    <Button 
+                      onClick={() => validationErrors.length > 0 ? (setErrorMessage('Fix errors first!'), setShowErrorDialog(true)) : startViewer()} 
+                      className="pill-button font-bold text-sm px-6 h-10 bg-premium-gradient"
+                    >
+                      Finish & Run ▶
                     </Button>
                   </div>
-
-                  <Button variant="ghost" onClick={() => setShowEndingModal(true)} className="rounded-full hover:bg-primary/10 text-xs font-bold text-muted-foreground h-9 px-4">
-                    <Heart className="w-4 h-4 mr-2" /> Endings 💖
-                  </Button>
+                  <div className="h-px bg-secondary/20 w-full" />
+                  <div className="flex items-center justify-center gap-3">
+                    <Button variant="ghost" onClick={exportConfig} className="rounded-full text-xs font-bold text-muted-foreground h-9"><Download className="w-4 h-4 mr-2" /> Export</Button>
+                    <div className="relative">
+                      <input type="file" accept=".json" onChange={importConfig} className="absolute inset-0 opacity-0 cursor-pointer" />
+                      <Button variant="ghost" className="rounded-full text-xs font-bold text-muted-foreground h-9"><Upload className="w-4 h-4 mr-2" /> Import</Button>
+                    </div>
+                    <Button variant="ghost" onClick={() => setShowEndingModal(true)} className="rounded-full text-xs font-bold text-muted-foreground h-9"><Heart className="w-4 h-4 mr-2" /> Endings</Button>
+                  </div>
                 </div>
-              </div>
 
-              {builderView === 'LIST' ? (
-                <>
-                  {/* Statements List */}
-                  <DndContext 
-                    sensors={sensors}
-                    collisionDetection={closestCenter}
-                    onDragEnd={handleDragEnd}
-                  >
-                    <SortableContext 
-                      items={statements.map(s => s.id)}
-                      strategy={verticalListSortingStrategy}
-                    >
-                      <div className="space-y-6 pb-20">
+                {builderView === 'LIST' ? (
+                  <div className="space-y-6 pb-20">
+                    <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
+                      <SortableContext items={statements.map(s => s.id)} strategy={verticalListSortingStrategy}>
                         {statements.map((statement, index) => (
                           <SortableItem key={statement.id} id={statement.id}>
                             <Card className="scrapbook-card relative overflow-hidden" id={`statement-${statement.id}`}>
-                              <div className="absolute -top-2 -right-2 text-primary/20 rotate-12">
-                                <Sparkles className="w-12 h-12" />
-                              </div>
-                              <div className="absolute -bottom-4 -left-4 text-secondary/30 rotate-[-15deg]">
-                                <span className="text-5xl">🌸</span>
-                              </div>
                               <CardHeader className="pb-4 flex flex-row items-center justify-between space-y-0">
                                 <div className="flex items-center gap-3">
-                                  <span className="bg-primary/20 text-accent px-4 py-1 rounded-full text-xs font-bold uppercase tracking-widest">
-                                    #{index + 1}
-                                  </span>
+                                  <span className="bg-primary/20 text-accent px-4 py-1 rounded-full text-xs font-bold uppercase tracking-widest">#{index + 1}</span>
                                   <CardTitle className="text-2xl font-heading font-extrabold text-text-dark">Statement</CardTitle>
                                 </div>
-                                <Button 
-                                  variant="ghost" 
-                                  size="icon" 
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    setStatementToDelete(statement.id);
-                                  }}
-                                  className="text-muted-foreground hover:text-accent hover:bg-accent/10 rounded-full"
-                                >
-                                  <Trash2 className="w-5 h-5" />
-                                </Button>
+                                <Button variant="ghost" size="icon" onClick={() => setStatementToDelete(statement.id)} className="text-muted-foreground hover:text-accent rounded-full"><Trash2 className="w-5 h-5" /></Button>
                               </CardHeader>
                               <CardContent className="space-y-6">
+                                <Textarea 
+                                  value={statement.text}
+                                  onChange={(e) => updateStatement(statement.id, { text: e.target.value })}
+                                  className="stitched-input min-h-[100px] text-lg font-bold"
+                                  placeholder="Question text..."
+                                />
                                 <div className="space-y-4">
-                                  <Label className="text-[11px] uppercase tracking-[0.25em] text-muted-foreground/80 font-bold">Question Text</Label>
-                                  <Textarea 
-                                    value={statement.text}
-                                    onChange={(e) => updateStatement(statement.id, { text: e.target.value })}
-                                    className={cn(
-                                      "stitched-input min-h-[120px] text-xl font-bold transition-all leading-relaxed",
-                                      validationErrors.some(e => e.statementId === statement.id && e.field === 'text') && "border-accent ring-1 ring-accent/20"
-                                    )}
-                                    placeholder="What do you want to ask?"
-                                  />
-                                  {validationErrors.filter(e => e.statementId === statement.id && e.field === 'text').map((e, i) => (
-                                    <p key={i} className="text-[10px] text-accent font-bold mt-1 flex items-center gap-1">
-                                      <AlertCircle className="w-3 h-3" /> {e.message}
-                                    </p>
-                                  ))}
-                                </div>
-
-                                <div className="space-y-6">
-                                  <div className="flex items-center justify-between">
-                                    <Label className="text-[11px] uppercase tracking-[0.25em] text-muted-foreground/80 font-bold">Options</Label>
-                                    {validationErrors.filter(e => e.statementId === statement.id && e.field === 'options').map((e, i) => (
-                                      <div key={i} className="flex items-center gap-2 text-accent animate-pulse">
-                                        <AlertCircle className="w-4 h-4" />
-                                        <span className="text-[10px] font-bold uppercase tracking-widest">{e.message}</span>
+                                  {statement.options.map((opt, optIdx) => (
+                                    <div key={opt.id} className="p-4 rounded-2xl bg-secondary/10 border border-secondary/20 space-y-3">
+                                      <div className="flex items-center gap-3">
+                                        <Input 
+                                          value={opt.text} 
+                                          onChange={(e) => updateOption(statement.id, opt.id, { text: e.target.value })}
+                                          className="flex-grow font-semibold"
+                                          placeholder="Option text..."
+                                        />
+                                        <Button variant="ghost" size="icon" onClick={() => deleteOption(statement.id, opt.id)} disabled={statement.options.length <= 2} className="text-accent hover:bg-accent/10"><Trash2 className="w-4 h-4" /></Button>
                                       </div>
-                                    ))}
-                                  </div>
-                                  
-                                  <div className="flex flex-col gap-4 w-full max-w-full">
-                                    {statement.options.map((option, optIdx) => (
-                                      <div key={option.id} className={cn(
-                                        "p-3 px-4 rounded-2xl bg-secondary/10 border relative group transition-all hover:bg-secondary/20 w-full flex flex-col",
-                                        validationErrors.some(e => e.statementId === statement.id && e.optionId === option.id) 
-                                          ? "border-accent/30 bg-accent/5" 
-                                          : "border-secondary/30"
-                                      )}>
-                                        {statement.options.length > 2 && (
-                                          <Button
-                                            variant="ghost"
-                                            size="icon"
-                                            onClick={() => deleteOption(statement.id, option.id)}
-                                            className="absolute top-2 right-2 w-7 h-7 rounded-full bg-white shadow-sm border border-secondary text-muted-foreground hover:text-accent hover:bg-accent/10 transition-all z-10"
-                                          >
-                                            <XIcon className="w-3.5 h-3.5" />
-                                          </Button>
-                                        )}
-
-                                        <div className="flex flex-col sm:flex-row flex-wrap items-start sm:items-center gap-3 w-full mt-2 sm:mt-0">
-                                          <div className="flex flex-col flex-1 w-full min-w-0">
-                                            <div className="flex items-center gap-2 w-full">
-                                              <span className="w-5 h-5 rounded-full bg-secondary flex-shrink-0 flex items-center justify-center text-[10px] font-bold text-text-dark/50">
-                                                {optIdx + 1}
-                                              </span>
-                                              <Input 
-                                                value={option.text}
-                                                onChange={(e) => updateOption(statement.id, option.id, { text: e.target.value })}
-                                                className={cn(
-                                                  "rounded-lg bg-white border-none shadow-sm font-semibold h-8 w-full text-sm transition-all flex-1 min-w-0 break-words",
-                                                  validationErrors.some(e => e.statementId === statement.id && e.optionId === option.id && e.field === 'optionText') && "ring-2 ring-accent/50"
-                                                )}
-                                                placeholder="Option text..."
-                                              />
-                                            </div>
-                                            {validationErrors.filter(e => e.statementId === statement.id && e.optionId === option.id && e.field === 'optionText').map((e, i) => (
-                                              <p key={i} className="text-[9px] text-accent font-bold mt-1 ml-7">{e.message}</p>
-                                            ))}
-                                          </div>
-                                          
-                                          <div className="flex flex-row flex-wrap sm:flex-nowrap items-center gap-3 w-full sm:w-auto flex-shrink-0">
-                                            <div className="flex items-center gap-2 bg-white/50 px-2 py-1 rounded-lg border border-secondary/20 flex-shrink-0">
-                                              <Label htmlFor={`correct-${option.id}`} className="text-[10px] font-semibold uppercase tracking-widest cursor-pointer whitespace-nowrap text-muted-foreground mt-0.5">
-                                                {option.isCorrect ? 'Correct' : 'Wrong'}
-                                              </Label>
-                                              <Switch 
-                                                id={`correct-${option.id}`}
-                                                checked={option.isCorrect}
-                                                onCheckedChange={(val) => updateOption(statement.id, option.id, { isCorrect: val })}
-                                                className="scale-75 data-[state=checked]:bg-accent m-0 flex-shrink-0"
-                                              />
-                                            </div>
-
-                                            {option.isCorrect ? (
-                                              <div className="flex flex-col gap-2 flex-grow sm:flex-grow-0 sm:min-w-[140px] w-full sm:w-auto">
-                                                <Select 
-                                                  value={option.nextId || 'END'} 
-                                                  onValueChange={(val) => {
-                                                    if (val === 'END') {
-                                                      updateOption(statement.id, option.id, { nextId: null });
-                                                    } else {
-                                                      updateOption(statement.id, option.id, { nextId: val, endingId: null });
-                                                    }
-                                                  }}
-                                                >
-                                                  <SelectTrigger className={cn(
-                                                    "rounded-lg bg-white border-none shadow-sm h-8 text-[10px] font-bold w-full transition-all",
-                                                    validationErrors.some(e => e.statementId === statement.id && e.optionId === option.id && e.field === 'nextId') && "ring-2 ring-accent/50"
-                                                  )}>
-                                                    <SelectValue placeholder="Next Step" />
-                                                  </SelectTrigger>
-                                                  <SelectContent className="rounded-[20px] border border-secondary/20 shadow-2xl bg-[#FFF2E0]/95 backdrop-blur-md z-[9999] isolate">
-                                                    <SelectItem value="END">Ending 🏁</SelectItem>
-                                                    {statements
-                                                      .map((s, idx) => ({ ...s, originalIndex: idx }))
-                                                      .filter(s => s.id !== statement.id)
-                                                      .map((s) => (
-                                                        <SelectItem key={s.id} value={s.id}>
-                                                          #{s.originalIndex + 1}: {s.text.substring(0, 15)}...
-                                                        </SelectItem>
-                                                      ))
-                                                    }
-                                                  </SelectContent>
-                                                </Select>
-
-                                                {!option.nextId && endings.length > 0 && (
-                                                  <Select
-                                                    value={option.endingId || 'GLOBAL'}
-                                                    onValueChange={(val) => updateOption(statement.id, option.id, { endingId: val === 'GLOBAL' ? null : val })}
-                                                  >
-                                                    <SelectTrigger className="rounded-lg bg-primary/10 border-none shadow-sm h-8 text-[10px] font-bold w-full transition-all text-primary">
-                                                      <SelectValue placeholder="Select Ending" />
-                                                    </SelectTrigger>
-                                                    <SelectContent className="rounded-[20px] border border-secondary/20 shadow-2xl bg-[#FFF2E0]/95 backdrop-blur-md z-[9999] isolate">
-                                                      <SelectItem value="GLOBAL">Global Fallback</SelectItem>
-                                                      {endings.map((e, idx) => (
-                                                        <SelectItem key={e.id} value={e.id}>
-                                                          {e.title || `Ending #${idx + 1}`}
-                                                        </SelectItem>
-                                                      ))}
-                                                    </SelectContent>
-                                                  </Select>
-                                                )}
-
-                                                {validationErrors.filter(e => e.statementId === statement.id && e.optionId === option.id && e.field === 'nextId').map((e, i) => (
-                                                  <p key={i} className="text-[9px] text-accent font-bold mt-1">{e.message}</p>
-                                                ))}
-                                              </div>
-                                            ) : (
-                                              <div className="flex flex-col flex-grow sm:flex-grow-0 sm:min-w-[120px] w-full sm:w-auto">
-                                                <Input 
-                                                  value={option.wrongMessage}
-                                                  onChange={(e) => updateOption(statement.id, option.id, { wrongMessage: e.target.value })}
-                                                  className={cn(
-                                                    "rounded-lg bg-white border-none shadow-sm h-8 text-[10px] w-full transition-all",
-                                                    validationErrors.some(e => e.statementId === statement.id && e.optionId === option.id && e.field === 'wrongMessage') && "ring-2 ring-accent/50"
-                                                  )}
-                                                  placeholder="Oops message..."
-                                                />
-                                                {validationErrors.filter(e => e.statementId === statement.id && e.optionId === option.id && e.field === 'wrongMessage').map((e, i) => (
-                                                  <p key={i} className="text-[9px] text-accent font-bold mt-1">{e.message}</p>
-                                                ))}
-                                              </div>
-                                            )}
-                                          </div>
+                                      <div className="flex flex-wrap items-center gap-4 text-xs font-bold uppercase tracking-wider">
+                                        <div className="flex items-center gap-2">
+                                          <Switch checked={opt.isCorrect} onCheckedChange={(v) => updateOption(statement.id, opt.id, { isCorrect: v })} />
+                                          <span>{opt.isCorrect ? 'Correct ✨' : 'Wrong 🧸'}</span>
                                         </div>
+                                        {opt.isCorrect ? (
+                                          <Select value={opt.nextId || 'END'} onValueChange={(v) => updateOption(statement.id, opt.id, { nextId: v === 'END' ? null : v })}>
+                                            <SelectTrigger className="w-[140px] h-8"><SelectValue /></SelectTrigger>
+                                            <SelectContent>
+                                              <SelectItem value="END">Ending 🏁</SelectItem>
+                                              {statements.filter(s => s.id !== statement.id).map((s, i) => (
+                                                <SelectItem key={s.id} value={s.id}>Next #{i+1}</SelectItem>
+                                              ))}
+                                            </SelectContent>
+                                          </Select>
+                                        ) : (
+                                          <Input 
+                                            value={opt.wrongMessage}
+                                            onChange={(e) => updateOption(statement.id, opt.id, { wrongMessage: e.target.value })}
+                                            className="h-8 flex-grow"
+                                            placeholder="Oops message..."
+                                          />
+                                        )}
                                       </div>
-                                    ))}
-                                    
-                                    <Button 
-                                      variant="outline" 
-                                      onClick={() => addOption(statement.id)}
-                                      className="w-full py-6 rounded-2xl border-2 border-dashed border-secondary hover:bg-secondary/20 text-muted-foreground font-semibold transition-all duration-200"
-                                    >
-                                      <PlusIcon className="w-4 h-4 mr-2" /> Add Option
-                                    </Button>
-                                  </div>
+                                    </div>
+                                  ))}
+                                  <Button variant="outline" onClick={() => addOption(statement.id)} className="w-full border-dashed border-2"><PlusIcon className="w-4 h-4 mr-2" /> Add Option</Button>
                                 </div>
                               </CardContent>
                             </Card>
                           </SortableItem>
                         ))}
-                      </div>
-                    </SortableContext>
-                  </DndContext>
-
-                  {statements.length === 0 && (
-                    <div className="text-center py-20 scrapbook-card relative overflow-hidden">
-                      <div className="absolute top-0 left-0 text-primary/5 -rotate-12">
-                        <Heart className="w-32 h-32 fill-current" />
-                      </div>
-                      <Heart className="w-16 h-16 text-primary mx-auto mb-6 animate-pulse" />
-                      <p className="text-text-dark/60 font-bold text-2xl tracking-tight">No statements yet. Add one to start! 🌸</p>
-                    </div>
-                  )}
-                </>
-              ) : (
-                <FlowView 
-                  statements={statements} 
-                  validationErrors={validationErrors}
-                  onEditNode={(id) => {
-                    setBuilderView('LIST');
-                    setTimeout(() => {
-                      document.getElementById(`statement-${id}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' });
-                    }, 100);
-                  }} 
-                />
-              )}
-            </motion.div>
-          ) : (
-            <motion.div
-              key="viewer"
-              initial={{ opacity: 0, scale: 0.98 }}
-              animate={{ opacity: 1, scale: 1 }}
-              exit={{ opacity: 0, scale: 0.98 }}
-              transition={{ duration: 0.15, ease: [0.22, 1, 0.36, 1] }}
-              className="flex flex-col items-center justify-center min-h-[60vh] relative"
-              style={{ willChange: 'transform, opacity' }}
-            >
-              <AnimatePresence mode="wait">
-                {currentStatementId === 'END' ? (
-                  <motion.div
-                    key="end"
-                    initial={{ opacity: 0, scale: 0.95 }}
-                    animate={{ opacity: 1, scale: 1 }}
-                    transition={{ duration: 0.2, ease: "easeOut" }}
-                    className="fixed inset-0 z-50 flex items-center justify-center p-6 bg-background/90 backdrop-blur-md"
-                  >
-                    <div className="text-center space-y-6 animate-in fade-in zoom-in duration-300">
-                      <h1 className="text-5xl md:text-6xl font-heading font-extrabold text-gradient">
-                        {currentEndingDisplay?.title || ending.title}
-                      </h1>
-                      {(currentEndingDisplay?.subtitle || ending.subtitle) && (
-                        <p className="text-2xl text-text-dark/80 font-bold">
-                          {currentEndingDisplay?.subtitle || ending.subtitle}
-                        </p>
-                      )}
-                      <div className="flex justify-center gap-4 text-primary/40 pt-8">
-                        <Heart className="w-8 h-8 fill-current animate-pulse" />
-                        <Sparkles className="w-8 h-8 animate-pulse delay-700" />
-                        <Heart className="w-8 h-8 fill-current animate-pulse delay-1000" />
-                      </div>
-                    </div>
-                  </motion.div>
-                ) : currentStatement ? (
-                  <motion.div
-                    key={currentStatement.id}
-                    initial={{ opacity: 0, scale: 0.98 }}
-                    animate={{ opacity: 1, scale: 1 }}
-                    exit={{ opacity: 0, scale: 0.98 }}
-                    transition={{ duration: 0.15, ease: [0.22, 1, 0.36, 1] }}
-                    className="w-full max-w-lg"
-                  >
-                    <Card className="scrapbook-card p-0 overflow-hidden text-center space-y-0 shadow-premium relative">
-                      <div className="absolute top-4 right-4 text-primary/10">
-                        <Heart className="w-16 h-16 fill-current" />
-                      </div>
-                      <div className="absolute bottom-4 left-4 text-accent/10 rotate-12">
-                        <span className="text-4xl">🍓</span>
-                      </div>
-                      {/* Progress Bar */}
-                      <div className="w-full h-2 bg-secondary/20 relative">
-                        <motion.div 
-                          initial={{ width: 0 }}
-                          animate={{ width: `${((statements.findIndex(s => s.id === currentStatementId) + 1) / statements.length) * 100}%` }}
-                          transition={{ duration: 0.4, ease: "easeOut" }}
-                          className="absolute inset-y-0 left-0 bg-gradient-to-r from-primary to-accent rounded-r-full"
-                        />
-                      </div>
-                      
-                      <div className="p-8 md:p-12 space-y-10">
-                        <div className="space-y-6">
-                          <div className="flex flex-col items-center gap-4">
-                            <span className="text-[11px] font-bold uppercase tracking-[0.4em] text-primary/70">
-                              Step {statements.findIndex(s => s.id === currentStatementId) + 1} of {statements.length} 💖
-                            </span>
-                            <div className="flex justify-center gap-3">
-                              <Star className="text-primary fill-primary w-5 h-5" />
-                              <Star className="text-primary fill-primary w-5 h-5" />
-                              <Star className="text-primary fill-primary w-5 h-5" />
-                            </div>
-                          </div>
-                          <h2 className="text-3xl md:text-4xl font-heading font-extrabold text-text-dark leading-tight text-gradient py-4">
-                            {currentStatement.text}
-                          </h2>
+                      </SortableContext>
+                    </DndContext>
+                  </div>
+                ) : (
+                  <FlowView 
+                    statements={statements} 
+                    validationErrors={validationErrors}
+                    onEditNode={(id) => {
+                      setBuilderView('LIST');
+                      setTimeout(() => document.getElementById(`statement-${id}`)?.scrollIntoView({ behavior: 'smooth' }), 100);
+                    }} 
+                  />
+                )}
+              </motion.div>
+            ) : (
+              <motion.div key="viewer" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="flex flex-col items-center justify-center min-h-[60vh] w-full">
+                <AnimatePresence mode="wait">
+                  {currentStatementId === 'END' ? (
+                    <motion.div key="end" className="text-center space-y-6">
+                      <h1 className="text-6xl font-heading font-extrabold text-gradient">{currentEndingDisplay?.title || ending.title}</h1>
+                      <p className="text-2xl font-bold opacity-80">{currentEndingDisplay?.subtitle || ending.subtitle}</p>
+                      <Button onClick={() => setMode('builder')} className="pill-button bg-premium-gradient px-12">Edit 💖</Button>
+                    </motion.div>
+                  ) : currentStatement ? (
+                    <motion.div key={currentStatement.id} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -10 }} className="w-full max-w-lg">
+                      <Card className="scrapbook-card p-8 md:p-12 space-y-10 shadow-premium">
+                        <h2 className="text-3xl font-heading font-extrabold text-gradient">{currentStatement.text}</h2>
+                        <div className="flex flex-col gap-4">
+                          {currentStatement.options.map((opt) => (
+                            <Button key={opt.id} onClick={(e) => handleOptionSelect(opt, e.clientX, e.clientY)} className="pill-button min-h-[60px] text-lg bg-premium-gradient">
+                              {opt.text}
+                            </Button>
+                          ))}
                         </div>
+                      </Card>
+                    </motion.div>
+                  ) : null}
+                </AnimatePresence>
+              </motion.div>
+            )}
+          </AnimatePresence>
+        </main>
+      </div>
 
-                        <div className="max-h-[40vh] overflow-y-auto pr-2 custom-scrollbar">
-                          <div className="flex flex-col gap-3 py-2 w-full">
-                            {currentStatement.options.map((option, i) => (
-                              <motion.div
-                                key={option.id}
-                                className="w-full flex"
-                                whileHover={selectedId !== option.id ? { scale: 1.01 } : {}}
-                                whileTap={selectedId !== option.id ? { scale: 0.98 } : {}}
-                              >
-                                <Button
-                                  onClick={(e) => {
-                                    setSelectedId(option.id);
-                                    handleOptionSelect(option, e.clientX, e.clientY);
-                                  }}
-                                  className={cn(
-                                    "pill-button w-full min-h-[64px] h-auto flex text-left items-center justify-start overflow-hidden",
-                                    i % 2 === 0 
-                                      ? "bg-premium-gradient" 
-                                      : "bg-white text-text-dark hover:bg-secondary/20 border-2 border-secondary/50",
-                                    selectedId === option.id && "ring-4 ring-primary/30 shadow-premium brightness-95"
-                                  )}
-                                >
-                                  <span className="line-clamp-2 w-full text-lg leading-tight font-bold">
-                                    {option.text}
-                                  </span>
-                                </Button>
-                              </motion.div>
-                            ))}
-                          </div>
-                        </div>
-                      </div>
-                    </Card>
-                  </motion.div>
-                ) : null}
-              </AnimatePresence>
-            </motion.div>
-          )}
-        </AnimatePresence>
-      </main>
-
-      {/* Floating Controls */}
+      {/* Floating UI Elements */}
       <AnimatePresence>
-        {mode === 'BUILDER' && (
+        {mode === 'builder' && (
           <>
-            {/* View Toggle (Floating) */}
-            <motion.div
-              initial={{ y: 20, opacity: 0 }}
-              animate={{ y: 0, opacity: 1 }}
-              exit={{ y: 20, opacity: 0 }}
-              className="list-flow-toggle fixed bottom-[calc(20px+env(safe-area-inset-bottom,24px))] left-6 flex bg-white/90 backdrop-blur-md p-1.5 rounded-full shadow-premium border border-primary/20 z-[1000]"
-            >
-              <Button 
-                variant={builderView === 'LIST' ? 'secondary' : 'ghost'} 
-                size="sm"
-                onClick={() => setBuilderView('LIST')}
-                className={cn(
-                  "rounded-full px-6 h-10 text-xs font-bold transition-all", 
-                  builderView === 'LIST' ? "bg-premium-gradient" : "text-muted-foreground hover:text-primary hover:bg-primary/10"
-                )}
-              >
-                <LayoutList className="w-4 h-4 mr-2" /> List
-              </Button>
-              <Button 
-                variant={builderView === 'FLOW' ? 'secondary' : 'ghost'} 
-                size="sm"
-                onClick={() => setBuilderView('FLOW')}
-                className={cn(
-                  "rounded-full px-6 h-10 text-xs font-bold transition-all", 
-                  builderView === 'FLOW' ? "bg-premium-gradient" : "text-muted-foreground hover:text-primary hover:bg-primary/10"
-                )}
-              >
-                <GitBranch className="w-4 h-4 mr-2" /> Flow 💫
-              </Button>
+            <motion.div initial={{ y: 50 }} animate={{ y: 0 }} exit={{ y: 50 }} className="fixed bottom-[calc(20px+env(safe-area-inset-bottom,24px))] left-6 flex bg-white/90 backdrop-blur-md p-1.5 rounded-full shadow-premium border border-primary/20 z-[5000]">
+              <Button variant={builderView === 'LIST' ? 'secondary' : 'ghost'} onClick={() => setBuilderView('LIST')} className={cn("rounded-full px-6", builderView === 'LIST' && "bg-premium-gradient text-white")}>List</Button>
+              <Button variant={builderView === 'FLOW' ? 'secondary' : 'ghost'} onClick={() => setBuilderView('FLOW')} className={cn("rounded-full px-6", builderView === 'FLOW' && "bg-premium-gradient text-white")}>Flow</Button>
             </motion.div>
-
-            {/* Add Statement FAB */}
-            <motion.button
-              initial={{ scale: 0, opacity: 0 }}
-              animate={{ scale: 1, opacity: 1 }}
-              exit={{ scale: 0, opacity: 0 }}
-              whileHover={{ scale: 1.1, y: -4, rotate: 5 }}
-              whileTap={{ scale: 0.9 }}
-              onClick={addStatement}
-              className="fab-button fixed bottom-[calc(20px+env(safe-area-inset-bottom,24px))] right-6 w-16 h-16 bg-premium-gradient flex items-center justify-center z-[1000] rounded-full shadow-premium transition-all"
-              title="Add Statement"
-            >
+            <motion.button initial={{ scale: 0 }} animate={{ scale: 1 }} exit={{ scale: 0 }} onClick={addStatement} className="fixed bottom-[calc(20px+env(safe-area-inset-bottom,24px))] right-6 w-16 h-16 bg-premium-gradient rounded-full shadow-premium flex items-center justify-center z-[5000] text-white">
               <PlusIcon className="w-8 h-8" />
             </motion.button>
           </>
         )}
       </AnimatePresence>
 
-      {/* Wrong Answer Popup */}
+      {/* Modals */}
       <Dialog open={showWrongPopup} onOpenChange={setShowWrongPopup}>
-        <DialogContent className="sm:max-w-[400px] w-[90vw] rounded-[32px] border-none bg-gradient-to-br from-[#FFF5F7] to-[#FFE4E1] p-0 overflow-hidden shadow-2xl">
-          <motion.div
-            initial={{ scale: 0.95, opacity: 0 }}
-            animate={{ scale: [0.95, 1.02, 1], opacity: 1 }}
-            transition={{ duration: 0.3, ease: "easeOut" }}
-            className="p-10 text-center space-y-6 relative flex flex-col justify-center items-center"
-            style={{ willChange: 'transform, opacity' }}
-          >
-            {/* Background elements */}
-            <div className="absolute top-4 left-4 text-primary/40 rotate-12">
-              <Heart className="w-8 h-8 fill-current" />
-            </div>
-            <div className="absolute bottom-10 right-4 text-highlight/40 -rotate-12 opacity-30">
-              <Sparkles className="w-10 h-10" />
-            </div>
-            
-            <div className="space-y-6 z-10 relative flex-grow flex flex-col justify-center">
-              <DialogDescription className="text-xl text-[#5A3E3B] font-bold leading-relaxed px-2 text-center break-words">
-                {wrongMessage}
-              </DialogDescription>
-            </div>
-
-            <DialogFooter className="flex justify-center items-center w-full z-10 mt-4">
-              <Button 
-                onClick={() => setShowWrongPopup(false)}
-                className="pill-button bg-premium-gradient px-12 py-6 text-lg hover:shadow-primary/30 active:scale-95 transition-all group w-full max-w-[200px]"
-              >
-                Try again <Heart className="ml-2 w-5 h-5 group-hover:scale-125 transition-transform" />
-              </Button>
-            </DialogFooter>
-          </motion.div>
+        <DialogContent className="sm:max-w-[400px] rounded-[32px] border-none bg-background p-10 text-center">
+          <p className="text-xl font-bold text-text-dark mb-6">{wrongMessage}</p>
+          <Button onClick={() => setShowWrongPopup(false)} className="pill-button bg-premium-gradient w-full">Try again 💖</Button>
         </DialogContent>
       </Dialog>
       
-      {/* Ending Message Dialog */}
-      <EndingMessageDialog 
-        open={showEndingModal} 
-        onOpenChange={setShowEndingModal} 
-        ending={ending} 
-        setEnding={setEnding}
-        endings={endings}
-        setEndings={setEndings}
-      />
+      <EndingMessageDialog open={showEndingModal} onOpenChange={setShowEndingModal} ending={ending} setEnding={setEnding} endings={endings} setEndings={setEndings} />
 
-
-      {/* Error Dialog */}
       <Dialog open={showErrorDialog} onOpenChange={setShowErrorDialog}>
-        <DialogContent className="sm:max-w-[400px] rounded-[28px] border-none bg-white p-0 overflow-hidden shadow-premium">
-          <motion.div
-            initial={{ scale: 0.95, opacity: 0 }}
-            animate={{ scale: 1, opacity: 1 }}
-            transition={{ duration: 0.2, ease: "easeOut" }}
-            className="p-10 text-center space-y-8 relative"
-            style={{ willChange: 'transform, opacity' }}
-          >
-            <div className="flex justify-center">
-              <div className="bg-primary/10 p-6 rounded-full">
-                <AlertCircle className="w-12 h-12 text-primary" />
-              </div>
-            </div>
-            
-            <div className="space-y-3">
-              <DialogTitle className="text-2xl font-heading font-extrabold text-text-dark">Oopsie! 🍓🥺</DialogTitle>
-              <DialogDescription className="text-lg text-text-dark/80 font-semibold leading-relaxed">
-                {errorMessage}
-              </DialogDescription>
-            </div>
-
-            <DialogFooter className="sm:justify-center">
-              <Button 
-                onClick={() => setShowErrorDialog(false)}
-                className="pill-button bg-premium-gradient px-16"
-              >
-                Close ✨
-              </Button>
-            </DialogFooter>
-          </motion.div>
+        <DialogContent className="sm:max-w-[400px] rounded-[28px] p-10 text-center">
+          <AlertCircle className="w-12 h-12 text-primary mx-auto mb-4" />
+          <DialogTitle className="text-2xl font-bold mb-2">Oopsie!</DialogTitle>
+          <p className="text-lg opacity-80 mb-6">{errorMessage}</p>
+          <Button onClick={() => setShowErrorDialog(false)} className="pill-button bg-premium-gradient w-full">Close</Button>
         </DialogContent>
       </Dialog>
 
-      {/* Delete Statement Confirm Dialog */}
-      <Dialog open={!!statementToDelete} onOpenChange={(open) => !open && setStatementToDelete(null)}>
-        <DialogContent className="sm:max-w-[400px] rounded-[28px] border-none bg-white p-0 overflow-hidden shadow-premium">
-          <motion.div
-             initial={{ scale: 0.95, opacity: 0 }}
-             animate={{ scale: 1, opacity: 1 }}
-             transition={{ duration: 0.2, ease: "easeOut" }}
-             className="p-10 text-center space-y-8 relative pointer-events-auto"
-             onClick={(e) => e.stopPropagation()}
-          >
-            <div className="flex justify-center">
-              <div className="bg-destructive/10 p-6 rounded-full">
-                <Trash2 className="w-12 h-12 text-destructive" />
-              </div>
-            </div>
-            
-            <div className="space-y-3">
-              <DialogTitle className="text-2xl font-heading font-extrabold text-text-dark">Confirm Deletion</DialogTitle>
-              <DialogDescription className="text-lg text-text-dark/80 font-semibold leading-relaxed">
-                Are you sure you want to delete this statement?
-              </DialogDescription>
-            </div>
-
-            <DialogFooter className="sm:justify-center flex w-full gap-3 mt-4">
-              <Button 
-                variant="outline"
-                onClick={(e) => {
-                   e.stopPropagation();
-                   setStatementToDelete(null);
-                }}
-                className="rounded-full font-bold w-full uppercase text-xs tracking-wider border-secondary/50"
-              >
-                Cancel ❌
-              </Button>
-              <Button 
-                onClick={(e) => {
-                  e.stopPropagation();
-                  if (isDeletingRef.current) return;
-                  isDeletingRef.current = true;
-
-                  if (statementToDelete) {
-                    deleteStatement(statementToDelete);
-                  }
-                  
-                  setStatementToDelete(null);
-                  setTimeout(() => {
-                    isDeletingRef.current = false;
-                  }, 300);
-                }}
-                className="rounded-full bg-accent/15 hover:bg-accent/25 text-accent font-extrabold w-full uppercase text-xs tracking-widest transition-all active:scale-95 shadow-sm"
-              >
-                Delete 💔
-              </Button>
-            </DialogFooter>
-          </motion.div>
-        </DialogContent>
-      </Dialog>
-
-      {/* Footer Decoration */}
-      <footer className="mt-auto py-8 text-muted-foreground text-sm flex flex-col items-center gap-4">
-        {mode === 'BUILDER' && (
-          <div className={cn(
-            "px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider backdrop-blur-sm transition-all duration-300",
-            saveStatus === 'Saving...' ? "bg-accent/10 text-accent" : "bg-primary/10 text-primary"
-          )}>
-            {saveStatus}
+      <Dialog open={!!statementToDelete} onOpenChange={(v) => !v && setStatementToDelete(null)}>
+        <DialogContent className="p-10 text-center rounded-[28px]">
+          <Trash2 className="w-12 h-12 text-accent mx-auto mb-4" />
+          <DialogTitle className="text-2xl font-bold mb-6">Delete this statement?</DialogTitle>
+          <div className="flex gap-4">
+            <Button variant="outline" onClick={() => setStatementToDelete(null)} className="flex-1 rounded-full">Cancel</Button>
+            <Button onClick={() => { deleteStatement(statementToDelete!); setStatementToDelete(null); }} className="flex-1 rounded-full bg-accent text-white">Delete</Button>
           </div>
-        )}
-        <div className="flex items-center gap-2">
-          Made with <Heart className="w-4 h-4 text-primary fill-primary" /> for cuties
-        </div>
+        </DialogContent>
+      </Dialog>
+
+      <footer className="fixed bottom-4 left-0 right-0 pointer-events-none flex justify-center opacity-40 text-[10px] font-bold uppercase tracking-widest z-0">
+        Made with 💖 for cuties
       </footer>
       </div>
-    </div>
   );
 }
