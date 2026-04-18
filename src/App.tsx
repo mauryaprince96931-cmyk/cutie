@@ -58,8 +58,9 @@ import { EntryMessageDialog } from './components/EntryMessageDialog';
 import { LoginScreen, AdminPanel } from './components/Auth';
 import { Button } from '@/components/ui/button';
 import { onAuthStateChanged } from 'firebase/auth';
-import { auth, isConfigValid } from '@/lib/firebase';
+import { auth, isConfigValid, db } from '@/lib/firebase';
 import { fetchUserData, createUserData, deleteUserData, saveUserDataDebounced, fetchAllUsers } from '@/lib/db';
+import { doc, onSnapshot } from 'firebase/firestore';
 import { loadSoundPreference, setSoundEnabled, playSound, initAudio } from './lib/sound';
 
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -602,10 +603,13 @@ export default function App() {
   const [showErrorDialog, setShowErrorDialog] = useState(false);
   const [saveStatus, setSaveStatus] = useState<'Saved 💾' | 'Saving...'>('Saved 💾');
   const [soundOn, setSoundOn] = useState(true);
+  const audioRef = useRef<HTMLAudioElement | null>(null);
+  const [musicOn, setMusicOn] = useState(() => localStorage.getItem('musicOn') === 'true');
   const [loadingText, setLoadingText] = useState("");
   const [isExitingLoading, setIsExitingLoading] = useState(false);
   const [statementToDelete, setStatementToDelete] = useState<string | null>(null);
   const isDeletingRef = useRef(false);
+  const hasUserEdited = useRef(false);
 
   // Fetch Users for Admin Panel
   useEffect(() => {
@@ -622,7 +626,15 @@ export default function App() {
         setMode('login');
         return;
     }
+
+    let snapshotUnsub: (() => void) | null = null;
+
     const unsub = onAuthStateChanged(auth, async (firebaseUser) => {
+        if (snapshotUnsub) {
+            snapshotUnsub();
+            snapshotUnsub = null;
+        }
+
         if (firebaseUser) {
             setIsLoading(true);
             try {
@@ -649,9 +661,9 @@ export default function App() {
 
                 if (userData) {
                     setCurrentUser(userData);
-                    setStatements(userData.data.statements || DEFAULT_STATEMENTS);
-                    setEndings(userData.data.endings || []);
-                    setEntryMessage(userData.data.entryMessage || { title: "Hey cutie 💖", subtitle: "I made something for you… 🥺" });
+                    setStatements(userData.data?.statements ?? DEFAULT_STATEMENTS);
+                    setEndings(userData.data?.endings ?? []);
+                    setEntryMessage(userData.data?.entryMessage ?? { title: "Hey cutie 💖", subtitle: "I made something for you… 🥺" });
                     setDataLoaded(true);
                     
                     if (userData.role === 'admin' || firebaseUser.email === ADMIN_EMAIL) {
@@ -661,6 +673,23 @@ export default function App() {
                         setMode('loading');
                     }
                 }
+
+                const userRef = doc(db, 'users', firebaseUser.uid);
+                snapshotUnsub = onSnapshot(userRef, (docSnap) => {
+                  if (!docSnap.exists()) return;
+
+                  const data = docSnap.data();
+
+                  console.log("REALTIME UPDATE:", data);
+
+                  // CRITICAL: DO NOT overwrite active edits
+                  if (hasUserEdited.current) return;
+
+                  setStatements(data.data?.statements ?? DEFAULT_STATEMENTS);
+                  setEndings(data.data?.endings ?? []);
+                  setEntryMessage(data.data?.entryMessage ?? { title: "Hey cutie 💖", subtitle: "I made something for you… 🥺" });
+                });
+
             } catch (e) {
                 console.error("Failed to fetch/bootstrap user data:", e);
                 setMode('login');
@@ -676,8 +705,65 @@ export default function App() {
         }
     });
 
-    return () => unsub();
+    return () => {
+        unsub();
+        if (snapshotUnsub) snapshotUnsub();
+    };
   }, []);
+
+  useEffect(() => {
+    hasUserEdited.current = false;
+  }, [currentUser]);
+
+  useEffect(() => {
+
+    // Single instance initialization for BGM
+    audioRef.current = new Audio("/audio/bgm.mp3");
+    audioRef.current.loop = true;
+    audioRef.current.volume = 0.2;
+    
+    return () => {
+      if (audioRef.current) {
+        audioRef.current.pause();
+        audioRef.current = null;
+      }
+    };
+  }, []);
+
+  useEffect(() => {
+    localStorage.setItem('musicOn', musicOn ? 'true' : 'false');
+  }, [musicOn]);
+
+  useEffect(() => {
+    if (mode !== 'viewer' && audioRef.current) {
+      audioRef.current.pause();
+      setMusicOn(false);
+    }
+  }, [mode]);
+
+  const toggleMusic = () => {
+    const audio = audioRef.current;
+    if (!audio) return;
+
+    if (musicOn) {
+      audio.pause();
+      setMusicOn(false);
+    } else {
+      audio.volume = 0;
+      audio.play().catch(() => {
+        console.log("User interaction required for BGM 🎀");
+      });
+      
+      // Safe Fade-in
+      let v = 0;
+      const fade = setInterval(() => {
+        v += 0.02;
+        if (audioRef.current) audioRef.current.volume = Math.min(v, 0.2);
+        if (v >= 0.2) clearInterval(fade);
+      }, 50);
+      setMusicOn(true);
+    }
+  };
 
   // Auth Handlers
   const handleCreateUser = async (name: string, pass: string) => {
@@ -710,16 +796,24 @@ export default function App() {
 
   const handleUserLogin = (user: User) => {
     setCurrentUser(user);
-    setStatements(user.data.statements || DEFAULT_STATEMENTS);
-    setEndings(user.data.endings || []);
-    setEntryMessage(user.data.entryMessage || { title: "Hey cutie 💖", subtitle: "I made something for you… 🥺" });
+    setStatements(user.data?.statements ?? DEFAULT_STATEMENTS);
+    setEndings(user.data?.endings ?? []);
+    setEntryMessage(user.data?.entryMessage ?? { title: "Hey cutie 💖", subtitle: "I made something for you… 🥺" });
     setDataLoaded(true);
     setMode('loading');
   };
 
   const handleEnterBuilder = (user: User) => {
-    console.log("Opening builder for:", user);
+    hasUserEdited.current = false;
     setCurrentUser(user);
+    setStatements(user.data?.statements ?? DEFAULT_STATEMENTS);
+    setEndings(user.data?.endings ?? []);
+    setEntryMessage(
+      user.data?.entryMessage ?? {
+        title: "Hey cutie 💖",
+        subtitle: "I made something for you… 🥺"
+      }
+    );
     setMode('builder');
   };
 
@@ -788,6 +882,7 @@ export default function App() {
 
   useEffect(() => {
     if (currentUser && mode === 'builder' && isReady && dataLoaded && statements && endings && entryMessage) {
+        if (!hasUserEdited.current) return;
         saveUserDataDebounced(currentUser.id, { statements, endings, entryMessage });
     }
   }, [statements, endings, entryMessage, currentUser, mode, isReady, dataLoaded]);
@@ -833,6 +928,7 @@ export default function App() {
   };
 
   const addStatement = () => {
+    hasUserEdited.current = true;
     const newId = Math.random().toString(36).substr(2, 9);
     const newStatement: Statement = {
       id: newId,
@@ -858,14 +954,17 @@ export default function App() {
   };
 
   const deleteStatement = (id: string) => {
+    hasUserEdited.current = true;
     setStatements(prev => (prev || []).filter(s => s.id !== id));
   };
 
   const updateStatement = (id: string, updates: Partial<Statement>) => {
+    hasUserEdited.current = true;
     setStatements(prev => (prev || []).map(s => s.id === id ? { ...s, ...updates } : s));
   };
 
   const updateOption = (statementId: string, optionId: string, updates: Partial<Option>) => {
+    hasUserEdited.current = true;
     setStatements(prev => (prev || []).map(s => {
       if (s.id === statementId) {
         return {
@@ -878,6 +977,7 @@ export default function App() {
   };
 
   const addOption = (statementId: string) => {
+    hasUserEdited.current = true;
     setStatements(prev => (prev || []).map(s => {
       if (s.id === statementId) {
         const newOption: Option = {
@@ -897,6 +997,7 @@ export default function App() {
   };
 
   const deleteOption = (statementId: string, optionId: string) => {
+    hasUserEdited.current = true;
     setStatements(prev => (prev || []).map(s => {
       if (s.id === statementId) {
         if (s.options.length <= 2) return s;
@@ -912,6 +1013,7 @@ export default function App() {
   const handleDragEnd = (event: DragEndEvent) => {
     const { active, over } = event;
     if (over && active.id !== over.id) {
+      hasUserEdited.current = true;
       setStatements((items) => {
         const oldIndex = items.findIndex((i) => i.id === active.id);
         const newIndex = items.findIndex((i) => i.id === over.id);
@@ -946,6 +1048,7 @@ export default function App() {
       try {
         const json = JSON.parse(event.target?.result as string);
         if (!Array.isArray(json)) throw new Error('Invalid format');
+        hasUserEdited.current = true;
         setStatements(json);
       } catch (err) {
         setErrorMessage('Invalid configuration file.');
@@ -1199,6 +1302,20 @@ export default function App() {
             <Button variant="ghost" size="icon" onClick={handleLogout} className="w-10 h-10 rounded-full text-primary">
               {isAdmin ? <Users className="w-5 h-5" /> : <RotateCcw className="w-5 h-5" />}
             </Button>
+
+            {mode === 'viewer' && (
+              <Button 
+                variant="ghost" 
+                size="icon" 
+                onClick={toggleMusic} 
+                className={cn(
+                  "w-10 h-10 rounded-full transition-all duration-300",
+                  musicOn ? "text-primary bg-primary/10" : "text-muted-foreground"
+                )}
+              >
+                {musicOn ? <Volume2 className="w-5 h-5" /> : <VolumeX className="w-5 h-5" />}
+              </Button>
+            )}
           </div>
         </div>
 
@@ -1463,13 +1580,13 @@ export default function App() {
         </DialogContent>
       </Dialog>
       
-      <EndingMessageDialog open={showEndingModal} onOpenChange={setShowEndingModal} ending={ending} setEnding={setEnding} endings={endings} setEndings={setEndings} />
+      <EndingMessageDialog open={showEndingModal} onOpenChange={setShowEndingModal} ending={ending} setEnding={setEnding} endings={endings} setEndings={(e) => { hasUserEdited.current = true; setEndings(e); }} />
       
       <EntryMessageDialog 
         open={showEntryDialog} 
         onOpenChange={setShowEntryDialog} 
         entryMessage={entryMessage} 
-        setEntryMessage={setEntryMessage} 
+        setEntryMessage={(e) => { hasUserEdited.current = true; setEntryMessage(e); }} 
       />
 
       <Dialog open={showErrorDialog} onOpenChange={setShowErrorDialog}>

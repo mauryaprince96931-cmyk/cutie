@@ -1,4 +1,4 @@
-import { doc, getDoc, updateDoc, setDoc, collection, query, where, getDocs, deleteDoc } from 'firebase/firestore';
+import { doc, getDoc, updateDoc, setDoc, collection, query, where, getDocs, deleteDoc, onSnapshot } from 'firebase/firestore';
 import { db } from './firebase';
 import { debounce } from 'lodash';
 import { User } from '../types';
@@ -8,6 +8,7 @@ export const fetchUserData = async (uid: string): Promise<User | null> => {
   const userDoc = await getDoc(userRef);
   
   if (userDoc.exists()) {
+    console.log("LOAD:", userDoc.data());
     return { id: uid, ...userDoc.data() } as User;
   }
   return null;
@@ -48,6 +49,11 @@ export const createUserData = async (uid: string, userData: Omit<User, 'id'>) =>
 };
 
 export const saveUserDataDebounced = debounce(async (uid: string, data: User['data']) => {
+  if (!data || !data.statements) {
+    console.warn("Blocked: attempted save with missing data");
+    return;
+  }
+  console.log("SAVE:", data);
   const userRef = doc(db, 'users', uid);
   await updateDoc(userRef, { data });
 }, 500);
