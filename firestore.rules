@@ -9,22 +9,25 @@ service cloud.firestore {
     // Helpers
     function isSignedIn() { return request.auth != null; }
     function isAdmin() { 
-      return isSignedIn() && exists(/databases/$(database)/documents/users/admin_uid);
+      return isSignedIn() && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin';
     }
     
     // 1. Users Collection
     match /users/{userId} {
       // Admins can list and read all users, users can only read their own
-      allow list: if isSignedIn();
+      allow list: if isSignedIn() && (resource.data.id == request.auth.uid || isAdmin());
       allow get: if isSignedIn() && (request.auth.uid == userId || isAdmin());
       
-      // Admins can create/delete users
-      allow create, delete: if isAdmin();
+      // Admins can delete users. 
+      // Users can create their own profile if it doesn't exist.
+      allow create: if isSignedIn() && request.auth.uid == userId && 
+        (request.resource.data.role == 'user' || request.auth.token.email == 'mauryaprince96931@gmail.com');
+      
+      allow delete: if isAdmin();
       
       // Users can update their own data, but not their role or ID
       allow update: if isSignedIn() && request.auth.uid == userId && 
-        request.resource.data.role == resource.data.role &&
-        request.resource.data.id == resource.data.id;
+        request.resource.data.role == resource.data.role;
     }
   }
 }

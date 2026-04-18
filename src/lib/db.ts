@@ -1,4 +1,4 @@
-import { doc, getDoc, updateDoc } from 'firebase/firestore';
+import { doc, getDoc, updateDoc, setDoc } from 'firebase/firestore';
 import { db } from './firebase';
 import { debounce } from 'lodash';
 import { User } from '../types';
@@ -11,6 +11,12 @@ export const fetchUserData = async (uid: string): Promise<User | null> => {
     return { id: uid, ...userDoc.data() } as User;
   }
   return null;
+};
+
+export const createUserData = async (uid: string, userData: Omit<User, 'id'>) => {
+  const userRef = doc(db, 'users', uid);
+  await setDoc(userRef, userData);
+  return { id: uid, ...userData } as User;
 };
 
 export const saveUserDataDebounced = debounce(async (uid: string, data: User['data']) => {

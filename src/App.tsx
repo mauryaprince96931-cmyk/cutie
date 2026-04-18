@@ -57,8 +57,8 @@ import { LoginScreen, AdminPanel } from './components/Auth';
 import { Button } from '@/components/ui/button';
 import { onAuthStateChanged } from 'firebase/auth';
 import { auth } from '@/lib/firebase';
-import { fetchUserData, saveUserDataDebounced } from '@/lib/db';
-import { loadSoundPreference, playSound, initAudio } from './lib/sound';
+import { fetchUserData, createUserData, saveUserDataDebounced } from '@/lib/db';
+import { loadSoundPreference, setSoundEnabled, playSound, initAudio } from './lib/sound';
 
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -200,13 +200,6 @@ const DEFAULT_STATEMENTS: Statement[] = [
 ];
 
 type BuilderView = 'LIST' | 'FLOW';
-
-interface ValidationError {
-  statementId: string;
-  optionId?: string;
-  field: 'text' | 'options' | 'optionText' | 'wrongMessage' | 'nextId';
-  message: string;
-}
 
 interface NodePosition {
   x: number;
@@ -592,7 +585,7 @@ const LOADING_MESSAGES = [
 
 export default function App() {
   const [users, setUsers] = useState<User[]>([]);
-  const { mode, setMode, currentUser, setCurrentUser, isAdmin, setIsAdmin, currentStatementId, setCurrentStatementId, endingActive, setEndingActive, statements, setStatements, endings, setEndings, ending, setEnding, entryMessage, setEntryMessage } = useAppContext();
+  const { mode, setMode, currentUser, setCurrentUser, isAdmin, setIsAdmin, currentStatementId, setCurrentStatementId, endingActive, setEndingActive, statements, setStatements, endings, setEndings, ending, setEnding, entryMessage, setEntryMessage, isLoading, setIsLoading } = useAppContext();
   const [builderView, setBuilderView] = useState<BuilderView>('LIST');
   const [isReady, setIsReady] = useState(false);
   const [hasError, setHasError] = useState(false);
@@ -612,44 +605,72 @@ export default function App() {
   const [statementToDelete, setStatementToDelete] = useState<string | null>(null);
   const isDeletingRef = useRef(false);
 
+  // Auth & Data Lifecycle
+  useEffect(() => {
+    initAudio();
+    const unsub = onAuthStateChanged(auth, async (firebaseUser) => {
+        if (firebaseUser) {
+            setIsLoading(true);
+            try {
+                let userData = await fetchUserData(firebaseUser.uid);
+                
+                // --- Bootstrap Admin Logic ---
+                const ADMIN_EMAIL = 'mauryaprince96931@gmail.com';
+                
+                if (!userData) {
+                   // Initial Profile Creation
+                   const isFirstAdmin = firebaseUser.email === ADMIN_EMAIL;
+                   userData = await createUserData(firebaseUser.uid, {
+                       name: firebaseUser.displayName || firebaseUser.email?.split('@')[0] || 'Cutie',
+                       email: firebaseUser.email || '',
+                       role: isFirstAdmin ? 'admin' : 'user',
+                       data: {
+                           statements: DEFAULT_STATEMENTS,
+                           endings: [],
+                           entryMessage: { title: "Hey cutie 💖", subtitle: "I made something for you… 🥺" }
+                       }
+                   });
+                }
+
+                if (userData) {
+                    setCurrentUser(userData);
+                    setStatements(userData.data.statements || DEFAULT_STATEMENTS);
+                    setEndings(userData.data.endings || []);
+                    setEntryMessage(userData.data.entryMessage || { title: "Hey cutie 💖", subtitle: "I made something for you… 🥺" });
+                    
+                    if (userData.role === 'admin' || firebaseUser.email === ADMIN_EMAIL) {
+                        setIsAdmin(true);
+                        setMode('admin');
+                    } else {
+                        setMode('loading');
+                    }
+                }
+            } catch (e) {
+                console.error("Failed to fetch/bootstrap user data:", e);
+                setMode('login');
+            } finally {
+                setIsLoading(false);
+                setIsReady(true);
+            }
+        } else {
+            setIsAdmin(false);
+            setCurrentUser(null);
+            setMode('login');
+            setIsReady(true);
+        }
+    });
+
+    return () => unsub();
+  }, []);
+
   // Auth Handlers
-  const handleUserLogin = (name: string, pass: string) => {
-    const authData = loadAuth();
-    const user = authData.users.find((u: User) => u.name === name && u.passcode === pass);
-    if (user) {
-      setCurrentUser(user);
-      setMode('loading');
-    } else {
-      alert("Invalid login!");
-    }
-  };
-
-  const handleAdminLogin = (pass: string) => {
-    const authData = loadAuth();
-    if (authData.admin.passcode === pass) {
-      setIsAdmin(true);
-      setMode('admin');
-      setUsers(authData.users);
-    } else {
-      alert("Invalid admin passcode!");
-    }
-  };
-
   const handleCreateUser = (name: string, pass: string) => {
-    const newUser = { id: Date.now().toString(), name, passcode: pass, data: [] };
-    const newUsers = [...users, newUser];
-    setUsers(newUsers);
-    const authData = loadAuth();
-    authData.users = newUsers;
-    saveAuth(authData);
+    // This is now handled via Firebase Auth + Firestore
+    console.warn("handleCreateUser called but replaced by Firebase Auth flow");
   };
 
   const handleDeleteUser = (id: string) => {
-    const newUsers = users.filter(u => u.id !== id);
-    setUsers(newUsers);
-    const authData = loadAuth();
-    authData.users = newUsers;
-    saveAuth(authData);
+    console.warn("handleDeleteUser called but replaced by Firebase Auth flow");
   };
     
   const handleEnterBuilder = (user: User) => {
@@ -659,23 +680,7 @@ export default function App() {
   };
 
   const handleLogout = () => {
-    const isExitFromApp = isAdmin && (mode === 'builder' || mode === 'viewer' || mode === 'test');
-    
-    // Reset session-related state
-    setCurrentUser(null);
-    setEndingActive(false);
-    setCurrentStatementId(null);
-    setShowWrongPopup(false);
-    setShowEndingModal(false);
-
-    if (isExitFromApp) {
-      // Admin returning to management panel
-      setMode('admin');
-    } else {
-      // User or Admin logging out completely
-      setIsAdmin(false);
-      setMode('login');
-    }
+    auth.signOut();
   };
 
   // Sensors for DND
@@ -725,48 +730,10 @@ export default function App() {
   }, [mode, isAdmin]);
 
   useEffect(() => {
-    setSoundOn(loadSoundPreference());
-    setIsReady(true);
-  }, []);
-
-  useEffect(() => {
-    if (!currentUser) return;
-
-    const userData = loadUserData(currentUser.id);
-    if (userData && Object.keys(userData).length > 0) {
-      setStatements(userData.statements || DEFAULT_STATEMENTS);
-      setEndings(userData.endings || []);
-      if (userData.ending) setEnding(userData.ending);
-      
-      setEntryMessage(userData.entryMessage || {
-        title: "Hey cutie 💖",
-        subtitle: "I made something for you… 🥺"
-      });
-    } else {
-      setStatements(DEFAULT_STATEMENTS);
-      setEndings([]);
-      setEntryMessage({
-        title: "Hey cutie 💖",
-        subtitle: "I made something for you… 🥺"
-      });
+    if (currentUser && mode === 'builder' && isReady) {
+        saveUserDataDebounced(currentUser.id, { statements, endings, entryMessage });
     }
-    
-    setCurrentStatementId(null);
-    setSelectedId(null);
-    setEndingActive(false);
-    setShowEntryScreen(true);
-  }, [currentUser]);
-
-  useEffect(() => {
-    if (!currentUser || !isReady) return;
-
-    setSaveStatus('Saving...');
-    const timer = setTimeout(() => {
-      saveUserData(currentUser.id, { statements, ending, endings, entryMessage });
-      setSaveStatus('Saved 💾');
-    }, 500);
-    return () => clearTimeout(timer);
-  }, [statements, ending, endings, entryMessage, currentUser, isReady]);
+  }, [statements, endings, entryMessage, currentUser, mode, isReady]);
 
   useEffect(() => {
     setEndingActive(currentStatementId === 'END');

@@ -1,4 +1,12 @@
 
+export interface ValidationError {
+  statementId: string;
+  optionId?: string;
+  field: string;
+  message: string;
+  type?: 'error' | 'warning';
+}
+
 export interface User {
   id: string;
   name: string;

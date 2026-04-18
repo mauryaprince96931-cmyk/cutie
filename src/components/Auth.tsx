@@ -7,52 +7,92 @@ import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import { UserPlus, Trash2, Key, User as UserIcon, AlertCircle, CheckCircle2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import type { User } from '../types';
-
-import React, { useState } from 'react';
-import { motion, AnimatePresence } from 'motion/react';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
-import { UserPlus, Trash2, Key, User as UserIcon, AlertCircle, CheckCircle2 } from 'lucide-react';
-import { cn } from '@/lib/utils';
-import type { User } from '../types';
 import { auth } from '@/lib/firebase';
-import { signInWithEmailAndPassword } from 'firebase/auth';
+import { signInWithEmailAndPassword, createUserWithEmailAndPassword } from 'firebase/auth';
+
+const getFriendlyError = (code: string) => {
+  switch (code) {
+    case 'auth/invalid-email': return 'Invalid email address 💖';
+    case 'auth/user-not-found': return 'No account found with this email ✨';
+    case 'auth/wrong-password': return 'Incorrect passcode/password 🔒';
+    case 'auth/email-already-in-use': return 'Email already registered ✨';
+    case 'auth/weak-password': return 'Passcode is too weak 🧸';
+    case 'auth/invalid-credential': return 'Invalid credentials 💖';
+    default: return 'Something went wrong, try again! 🎀';
+  }
+};
 
 export const LoginScreen = () => {
   const [email, setEmail] = useState('');
   const [pass, setPass] = useState('');
   const [adminPass, setAdminPass] = useState('');
   const [error, setError] = useState('');
+  const [isRegistering, setIsRegistering] = useState(false);
 
   const handleLogin = async () => {
+    setError('');
     try {
-      await signInWithEmailAndPassword(auth, email, pass);
-    } catch (e) {
-      setError('Invalid email or passcode 💖');
+      if (isRegistering) {
+        await createUserWithEmailAndPassword(auth, email, pass);
+      } else {
+        await signInWithEmailAndPassword(auth, email, pass);
+      }
+    } catch (e: any) {
+      setError(getFriendlyError(e.code));
     }
   };
 
-  const handleAdminLogin = () => {
-    // Admin handling using custom logic or specialized admin auth flow
-    // For now, simple check against a known passcode (hashed/securely managed in v2)
-    alert("Admin login needs implementation with admin-specific auth/role check!");
+  const handleAdminLogin = async () => {
+    setError('');
+    try {
+      await signInWithEmailAndPassword(auth, email, adminPass);
+    } catch (e: any) {
+      setError(getFriendlyError(e.code));
+    }
   };
 
   return (
     <div className="flex flex-col items-center justify-center min-h-screen bg-secondary/10 p-4">
       <div className="bg-white p-8 rounded-3xl shadow-soft border border-secondary/20 max-w-sm w-full space-y-6">
-        <h1 className="text-2xl font-bold text-center text-primary">Login</h1>
-        {error && <p className="text-accent text-center font-bold">{error}</p>}
+        <div className="text-center space-y-2">
+            <h1 className="text-3xl font-heading font-extrabold text-primary">{isRegistering ? 'Sign Up' : 'Login'}</h1>
+            <p className="text-muted-foreground text-sm font-medium">Welcome back, cupcake! 🧁</p>
+        </div>
+
+        {error && (
+            <motion.div 
+                initial={{ opacity: 0, scale: 0.95 }}
+                animate={{ opacity: 1, scale: 1 }}
+                className="bg-accent/10 border border-accent/20 p-3 rounded-2xl flex items-center gap-3 text-accent text-sm font-bold"
+            >
+                <AlertCircle className="w-5 h-5 flex-shrink-0" />
+                {error}
+            </motion.div>
+        )}
+
         <div className="space-y-4">
-          <Input placeholder="Email" value={email} onChange={e => setEmail(e.target.value)} />
-          <Input type="password" placeholder="Passcode" value={pass} onChange={e => setPass(e.target.value)} />
-          <Button className="w-full bg-premium-gradient" onClick={handleLogin}>Login</Button>
+          <Input placeholder="Email" value={email} onChange={e => setEmail(e.target.value)} className="rounded-2xl h-12" />
+          <Input type="password" placeholder={isRegistering ? "Create Passcode" : "Passcode"} value={pass} onChange={e => setPass(e.target.value)} className="rounded-2xl h-12" />
+          <Button className="w-full bg-premium-gradient rounded-2xl h-12 font-bold text-lg shadow-premium" onClick={handleLogin}>
+            {isRegistering ? 'Sign Up ✨' : 'Login 💖'}
+          </Button>
+          <button 
+            className="w-full text-center text-primary/60 text-sm font-bold hover:text-primary transition-colors"
+            onClick={() => setIsRegistering(!isRegistering)}
+          >
+            {isRegistering ? 'Already have an account? Login' : "Don't have an account? Sign Up"}
+          </button>
         </div>
-        <div className="pt-6 border-t border-secondary/20 space-y-4">
-          <Input type="password" placeholder="Admin Passcode" value={adminPass} onChange={e => setAdminPass(e.target.value)} />
-          <Button className="w-full" variant="outline" onClick={handleAdminLogin}>Admin Login</Button>
-        </div>
+
+        {!isRegistering && (
+            <div className="pt-6 border-t border-secondary/20 space-y-4">
+                <div className="text-center">
+                    <span className="text-[10px] uppercase tracking-widest text-muted-foreground font-bold">Admin Portal</span>
+                </div>
+                <Input type="password" placeholder="Admin Passcode" value={adminPass} onChange={e => setAdminPass(e.target.value)} className="rounded-2xl h-12" />
+                <Button className="w-full rounded-2xl h-12 font-bold" variant="outline" onClick={handleAdminLogin}>Admin Login 🎀</Button>
+            </div>
+        )}
       </div>
     </div>
   );
@@ -252,7 +292,7 @@ export const AdminPanel = ({ users, onCreateUser, onEnterBuilder, onDeleteUser }
                   </div>
                   <div className="flex flex-col">
                     <span className="font-bold text-lg">{u.name}</span>
-                    <span className="text-[10px] uppercase tracking-wider text-muted-foreground font-bold">Pass: {u.passcode}</span>
+                    <span className="text-[10px] uppercase tracking-wider text-muted-foreground font-bold">{u.email}</span>
                   </div>
                 </div>
                 <div className="flex gap-2">

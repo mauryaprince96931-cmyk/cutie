@@ -1,12 +1,4 @@
-import { Statement } from '@/types';
-
-export interface ValidationError {
-  statementId: string;
-  optionId?: string;
-  field: string;
-  message: string;
-  type?: 'error' | 'warning';
-}
+import { Statement, ValidationError } from '@/types';
 
 export function getErrors(statements: Statement[]): ValidationError[] {
   const errors: ValidationError[] = [];
