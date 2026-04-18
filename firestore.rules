@@ -1,0 +1,30 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // 0. Global Safety Net
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // Helpers
+    function isSignedIn() { return request.auth != null; }
+    function isAdmin() { 
+      return isSignedIn() && exists(/databases/$(database)/documents/users/admin_uid);
+    }
+    
+    // 1. Users Collection
+    match /users/{userId} {
+      // Admins can list and read all users, users can only read their own
+      allow list: if isSignedIn();
+      allow get: if isSignedIn() && (request.auth.uid == userId || isAdmin());
+      
+      // Admins can create/delete users
+      allow create, delete: if isAdmin();
+      
+      // Users can update their own data, but not their role or ID
+      allow update: if isSignedIn() && request.auth.uid == userId && 
+        request.resource.data.role == resource.data.role &&
+        request.resource.data.id == resource.data.id;
+    }
+  }
+}

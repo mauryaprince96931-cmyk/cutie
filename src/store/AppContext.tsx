@@ -22,6 +22,8 @@ interface AppState {
   setEnding: (ending: { title: string; subtitle: string }) => void;
   entryMessage: EntryMessage;
   setEntryMessage: (msg: EntryMessage) => void;
+  isLoading: boolean;
+  setIsLoading: (loading: boolean) => void;
 }
 
 const AppContext = createContext<AppState | undefined>(undefined);
@@ -42,6 +44,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     title: "Hey cutie 💖",
     subtitle: "I made something for you… 🥺"
   });
+  const [isLoading, setIsLoading] = useState(false);
 
   return (
     <AppContext.Provider
@@ -64,6 +67,8 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         setEnding,
         entryMessage,
         setEntryMessage,
+        isLoading,
+        setIsLoading
       }}
     >
       {children}

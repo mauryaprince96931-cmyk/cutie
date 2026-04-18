@@ -1,0 +1,25 @@
+// firebase-blueprint.json
+
+{
+  "entities": {
+    "User": {
+      "title": "User",
+      "description": "Represents an application user or admin",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "passcode": { "type": "string" },
+        "role": { "type": "string", "enum": ["user", "admin"] },
+        "data": { "type": "object", "description": "The user's specific app data (statements, endings, entryMessage)" }
+      },
+      "required": ["id", "name", "passcode", "role"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": "User",
+      "description": "Collection of users and their application data"
+    }
+  }
+}
