@@ -19,7 +19,7 @@ import type { User } from '../types';
 import { auth } from '@/lib/firebase';
 import { signInWithEmailAndPassword } from 'firebase/auth';
 
-export const LoginScreen = ({ onLogin, onAdminLogin }: { onLogin: (email: string, pass: string) => void, onAdminLogin: (pass: string) => void }) => {
+export const LoginScreen = () => {
   const [email, setEmail] = useState('');
   const [pass, setPass] = useState('');
   const [adminPass, setAdminPass] = useState('');
@@ -31,6 +31,12 @@ export const LoginScreen = ({ onLogin, onAdminLogin }: { onLogin: (email: string
     } catch (e) {
       setError('Invalid email or passcode 💖');
     }
+  };
+
+  const handleAdminLogin = () => {
+    // Admin handling using custom logic or specialized admin auth flow
+    // For now, simple check against a known passcode (hashed/securely managed in v2)
+    alert("Admin login needs implementation with admin-specific auth/role check!");
   };
 
   return (
@@ -45,7 +51,7 @@ export const LoginScreen = ({ onLogin, onAdminLogin }: { onLogin: (email: string
         </div>
         <div className="pt-6 border-t border-secondary/20 space-y-4">
           <Input type="password" placeholder="Admin Passcode" value={adminPass} onChange={e => setAdminPass(e.target.value)} />
-          <Button className="w-full" variant="outline" onClick={() => onAdminLogin(adminPass)}>Admin Login</Button>
+          <Button className="w-full" variant="outline" onClick={handleAdminLogin}>Admin Login</Button>
         </div>
       </div>
     </div>

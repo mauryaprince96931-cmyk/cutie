@@ -976,7 +976,7 @@ export default function App() {
     return (
       <div className="min-h-screen flex flex-col items-center justify-center bg-background text-text-dark relative overflow-hidden">
         <FloatingElements />
-        <LoginScreen onLogin={handleUserLogin} onAdminLogin={handleAdminLogin} />
+        <LoginScreen />
       </div>
     );
   }
