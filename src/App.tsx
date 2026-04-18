@@ -57,7 +57,7 @@ import { LoginScreen, AdminPanel } from './components/Auth';
 import { Button } from '@/components/ui/button';
 import { onAuthStateChanged } from 'firebase/auth';
 import { auth } from '@/lib/firebase';
-import { fetchUserData, createUserData, saveUserDataDebounced } from '@/lib/db';
+import { fetchUserData, createUserData, deleteUserData, saveUserDataDebounced, fetchAllUsers } from '@/lib/db';
 import { loadSoundPreference, setSoundEnabled, playSound, initAudio } from './lib/sound';
 
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -605,6 +605,13 @@ export default function App() {
   const [statementToDelete, setStatementToDelete] = useState<string | null>(null);
   const isDeletingRef = useRef(false);
 
+  // Fetch Users for Admin Panel
+  useEffect(() => {
+    if (isAdmin) {
+      fetchAllUsers().then(setUsers).catch(console.error);
+    }
+  }, [isAdmin]);
+
   // Auth & Data Lifecycle
   useEffect(() => {
     initAudio();
@@ -623,6 +630,7 @@ export default function App() {
                    userData = await createUserData(firebaseUser.uid, {
                        name: firebaseUser.displayName || firebaseUser.email?.split('@')[0] || 'Cutie',
                        email: firebaseUser.email || '',
+                       passcode: 'admin-auth', // Internal placeholder for admin
                        role: isFirstAdmin ? 'admin' : 'user',
                        data: {
                            statements: DEFAULT_STATEMENTS,
@@ -664,15 +672,42 @@ export default function App() {
   }, []);
 
   // Auth Handlers
-  const handleCreateUser = (name: string, pass: string) => {
-    // This is now handled via Firebase Auth + Firestore
-    console.warn("handleCreateUser called but replaced by Firebase Auth flow");
+  const handleCreateUser = async (name: string, pass: string) => {
+    const newUser: Omit<User, 'id'> = {
+      name,
+      email: '',
+      passcode: pass,
+      role: 'user',
+      data: {
+        statements: DEFAULT_STATEMENTS,
+        endings: [],
+        entryMessage: { title: "Hey cutie 💖", subtitle: "I made something for you… 🥺" }
+      }
+    };
+    
+    // Create with a random ID since these aren't Firebase Auth users
+    const uid = `user_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+    const created = await createUserData(uid, newUser);
+    setUsers([...users, created]);
+  };
+
+  const deleteUser = async (id: string) => {
+    await deleteUserData(id);
+    setUsers(users.filter(u => u.id !== id));
   };
 
   const handleDeleteUser = (id: string) => {
-    console.warn("handleDeleteUser called but replaced by Firebase Auth flow");
+    deleteUser(id);
   };
-    
+
+  const handleUserLogin = (user: User) => {
+    setCurrentUser(user);
+    setStatements(user.data.statements || DEFAULT_STATEMENTS);
+    setEndings(user.data.endings || []);
+    setEntryMessage(user.data.entryMessage || { title: "Hey cutie 💖", subtitle: "I made something for you… 🥺" });
+    setMode('loading');
+  };
+
   const handleEnterBuilder = (user: User) => {
     console.log("Opening builder for:", user);
     setCurrentUser(user);
@@ -943,7 +978,7 @@ export default function App() {
     return (
       <div className="min-h-screen flex flex-col items-center justify-center bg-background text-text-dark relative overflow-hidden">
         <FloatingElements />
-        <LoginScreen />
+        <LoginScreen onUserLogin={handleUserLogin} />
       </div>
     );
   }

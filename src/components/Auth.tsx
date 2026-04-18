@@ -8,7 +8,8 @@ import { UserPlus, Trash2, Key, User as UserIcon, AlertCircle, CheckCircle2 } fr
 import { cn } from '@/lib/utils';
 import type { User } from '../types';
 import { auth } from '@/lib/firebase';
-import { signInWithEmailAndPassword, createUserWithEmailAndPassword } from 'firebase/auth';
+import { signInWithEmailAndPassword } from 'firebase/auth';
+import { findUserByNameAndPass } from '@/lib/db';
 
 const getFriendlyError = (code: string) => {
   switch (code) {
@@ -18,34 +19,41 @@ const getFriendlyError = (code: string) => {
     case 'auth/email-already-in-use': return 'Email already registered ✨';
     case 'auth/weak-password': return 'Passcode is too weak 🧸';
     case 'auth/invalid-credential': return 'Invalid credentials 💖';
-    default: return 'Something went wrong, try again! 🎀';
+    case 'auth/operation-not-allowed': return 'Email login is not enabled in Firebase 🎀 (Check console!)';
+    case 'auth/network-request-failed': return 'Network error, please check your connection 🌐';
+    default: return `Error (${code}): Something went wrong, try again! 🎀`;
   }
 };
 
-export const LoginScreen = () => {
+export const LoginScreen = ({ onUserLogin }: { onUserLogin: (user: User) => void }) => {
+  const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [pass, setPass] = useState('');
   const [adminPass, setAdminPass] = useState('');
   const [error, setError] = useState('');
-  const [isRegistering, setIsRegistering] = useState(false);
+  const [isAdminMode, setIsAdminMode] = useState(false);
 
   const handleLogin = async () => {
     setError('');
     try {
-      if (isRegistering) {
-        await createUserWithEmailAndPassword(auth, email, pass);
+      if (isAdminMode) {
+        if (!email || !adminPass) {
+          setError('Email and Admin Passcode required 🧸');
+          return;
+        }
+        await signInWithEmailAndPassword(auth, email, adminPass);
       } else {
-        await signInWithEmailAndPassword(auth, email, pass);
+        if (!name || !pass) {
+          setError('Username and Passcode required 🎀');
+          return;
+        }
+        const user = await findUserByNameAndPass(name, pass);
+        if (user) {
+          onUserLogin(user);
+        } else {
+          setError('Invalid username or passcode 💖');
+        }
       }
-    } catch (e: any) {
-      setError(getFriendlyError(e.code));
-    }
-  };
-
-  const handleAdminLogin = async () => {
-    setError('');
-    try {
-      await signInWithEmailAndPassword(auth, email, adminPass);
     } catch (e: any) {
       setError(getFriendlyError(e.code));
     }
@@ -55,7 +63,7 @@ export const LoginScreen = () => {
     <div className="flex flex-col items-center justify-center min-h-screen bg-secondary/10 p-4">
       <div className="bg-white p-8 rounded-3xl shadow-soft border border-secondary/20 max-w-sm w-full space-y-6">
         <div className="text-center space-y-2">
-            <h1 className="text-3xl font-heading font-extrabold text-primary">{isRegistering ? 'Sign Up' : 'Login'}</h1>
+            <h1 className="text-3xl font-heading font-extrabold text-primary">{isAdminMode ? 'Admin Login' : 'Login'}</h1>
             <p className="text-muted-foreground text-sm font-medium">Welcome back, cupcake! 🧁</p>
         </div>
 
@@ -71,28 +79,32 @@ export const LoginScreen = () => {
         )}
 
         <div className="space-y-4">
-          <Input placeholder="Email" value={email} onChange={e => setEmail(e.target.value)} className="rounded-2xl h-12" />
-          <Input type="password" placeholder={isRegistering ? "Create Passcode" : "Passcode"} value={pass} onChange={e => setPass(e.target.value)} className="rounded-2xl h-12" />
+          {isAdminMode ? (
+            <>
+              <Input placeholder="Admin Email" value={email} onChange={e => setEmail(e.target.value)} className="rounded-2xl h-12" />
+              <Input type="password" placeholder="Admin Passcode" value={adminPass} onChange={e => setAdminPass(e.target.value)} className="rounded-2xl h-12" />
+            </>
+          ) : (
+            <>
+              <Input placeholder="Username" value={name} onChange={e => setName(e.target.value)} className="rounded-2xl h-12" />
+              <Input type="password" placeholder="Passcode" value={pass} onChange={e => setPass(e.target.value)} className="rounded-2xl h-12" />
+            </>
+          )}
+          
           <Button className="w-full bg-premium-gradient rounded-2xl h-12 font-bold text-lg shadow-premium" onClick={handleLogin}>
-            {isRegistering ? 'Sign Up ✨' : 'Login 💖'}
+            {isAdminMode ? 'Admin Login 🎀' : 'Login 💖'}
           </Button>
+
           <button 
-            className="w-full text-center text-primary/60 text-sm font-bold hover:text-primary transition-colors"
-            onClick={() => setIsRegistering(!isRegistering)}
+            className="w-full text-center text-primary/60 text-sm font-bold hover:text-primary transition-colors pt-2"
+            onClick={() => {
+              setIsAdminMode(!isAdminMode);
+              setError('');
+            }}
           >
-            {isRegistering ? 'Already have an account? Login' : "Don't have an account? Sign Up"}
+            {isAdminMode ? 'Back to User Login' : "Are you the creator? Admin Login"}
           </button>
         </div>
-
-        {!isRegistering && (
-            <div className="pt-6 border-t border-secondary/20 space-y-4">
-                <div className="text-center">
-                    <span className="text-[10px] uppercase tracking-widest text-muted-foreground font-bold">Admin Portal</span>
-                </div>
-                <Input type="password" placeholder="Admin Passcode" value={adminPass} onChange={e => setAdminPass(e.target.value)} className="rounded-2xl h-12" />
-                <Button className="w-full rounded-2xl h-12 font-bold" variant="outline" onClick={handleAdminLogin}>Admin Login 🎀</Button>
-            </div>
-        )}
       </div>
     </div>
   );
@@ -292,7 +304,7 @@ export const AdminPanel = ({ users, onCreateUser, onEnterBuilder, onDeleteUser }
                   </div>
                   <div className="flex flex-col">
                     <span className="font-bold text-lg">{u.name}</span>
-                    <span className="text-[10px] uppercase tracking-wider text-muted-foreground font-bold">{u.email}</span>
+                    <span className="text-[10px] uppercase tracking-wider text-muted-foreground font-bold">Pass: {u.passcode}</span>
                   </div>
                 </div>
                 <div className="flex gap-2">

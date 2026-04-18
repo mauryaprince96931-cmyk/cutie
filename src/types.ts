@@ -11,6 +11,7 @@ export interface User {
   id: string;
   name: string;
   email: string;
+  passcode: string;
   role: 'user' | 'admin';
   data: {
     statements: Statement[];
