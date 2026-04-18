@@ -29,7 +29,9 @@ import {
   Check,
   ZoomIn,
   ZoomOut,
-  Maximize
+  Maximize,
+  Volume2,
+  VolumeX
 } from 'lucide-react';
 import { 
   DndContext, 
@@ -49,7 +51,10 @@ import {
 } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 
+import { EndingMessageDialog } from './components/EndingMessageDialog';
 import { Button } from '@/components/ui/button';
+import { loadSoundPreference, setSoundEnabled, playSound, initAudio } from './lib/sound';
+
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -75,12 +80,20 @@ import { cn } from '@/lib/utils';
 
 // --- Types ---
 
+interface Ending {
+  id: string;
+  title: string;
+  subtitle: string;
+}
+
 interface Option {
   id: string;
   text: string;
   nextId: string | null;
   isCorrect: boolean;
   wrongMessage: string;
+  endingId?: string | null;
+  ending?: { title: string; subtitle: string } | null;
 }
 
 interface Statement {
@@ -143,6 +156,38 @@ const SortableItem = ({ id, children }: SortableItemProps) => {
 // --- Constants ---
 
 const STORAGE_KEY = 'cuteMessageAppData';
+
+const LoadingMessage = () => {
+  const [index, setIndex] = useState(() => Math.floor(Math.random() * LOADING_MESSAGES.length));
+
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setIndex(prev => {
+        let next;
+        do {
+          next = Math.floor(Math.random() * LOADING_MESSAGES.length);
+        } while (next === prev);
+        return next;
+      });
+    }, 2500);
+    return () => clearInterval(interval);
+  }, []);
+
+  return (
+    <AnimatePresence mode="wait">
+      <motion.h2 
+        key={index}
+        initial={{ opacity: 0, y: 5 }}
+        animate={{ opacity: 1, y: 0 }}
+        exit={{ opacity: 0, y: -5 }}
+        transition={{ duration: 0.3 }}
+        className="text-2xl font-heading font-bold text-text-dark tracking-[1px] text-[#A67C85]"
+      >
+        {LOADING_MESSAGES[index]}
+      </motion.h2>
+    </AnimatePresence>
+  );
+};
 
 const DEFAULT_STATEMENTS: Statement[] = [
   {
@@ -244,15 +289,35 @@ const FlowView = ({ statements, validationErrors, onEditNode }: FlowViewProps) =
       const pts = Array.from(activePointers.current.values()) as { x: number, y: number }[];
       const dist = Math.hypot(pts[0].x - pts[1].x, pts[0].y - pts[1].y);
       
-      if (lastPinchDist.current !== null) {
+      if (lastPinchDist.current !== null && lastPinchDist.current > 0) {
         const delta = dist - lastPinchDist.current;
-        const newScale = Math.min(Math.max(transform.scale + delta * 0.005, 0.5), 2);
-        setTransform(prev => ({ ...prev, scale: newScale }));
+        const zoomFactor = 1 + (delta / lastPinchDist.current);
+        const newScale = Math.min(Math.max(transform.scale * zoomFactor, 0.6), 2.0);
+        
+        // Midpoint for centering zoom
+        const midX = (pts[0].x + pts[1].x) / 2;
+        const midY = (pts[0].y + pts[1].y) / 2;
+        
+        if (containerRef.current) {
+          const rect = containerRef.current.getBoundingClientRect();
+          const localX = midX - rect.left;
+          const localY = midY - rect.top;
+          
+          setTransform(prev => {
+            const scaleRatio = newScale / prev.scale;
+            return {
+              scale: newScale,
+              x: localX - (localX - prev.x) * scaleRatio,
+              y: localY - (localY - prev.y) * scaleRatio
+            };
+          });
+        }
       }
       lastPinchDist.current = dist;
     } else if (isDraggingCanvas.current && activePointers.current.size === 1) {
       const deltaX = e.clientX - lastPointerPos.current.x;
       const deltaY = e.clientY - lastPointerPos.current.y;
+      
       setTransform(prev => ({
         ...prev,
         x: prev.x + deltaX,
@@ -267,25 +332,31 @@ const FlowView = ({ statements, validationErrors, onEditNode }: FlowViewProps) =
     if (activePointers.current.size < 2) {
       lastPinchDist.current = null;
     }
-    if (isDraggingCanvas.current) {
+    if (isDraggingCanvas.current && activePointers.current.size === 0) {
       isDraggingCanvas.current = false;
     }
   };
 
   const handleWheel = (e: React.WheelEvent) => {
-    if (e.ctrlKey || e.metaKey) {
-      e.preventDefault();
-      const delta = -e.deltaY;
-      const factor = delta > 0 ? 1.1 : 0.9;
-      const newScale = Math.min(Math.max(transform.scale * factor, 0.5), 2);
-      setTransform(prev => ({ ...prev, scale: newScale }));
-    } else {
-      setTransform(prev => ({
-        ...prev,
-        x: prev.x - e.deltaX,
-        y: prev.y - e.deltaY
-      }));
-    }
+    e.preventDefault();
+    const rect = containerRef.current?.getBoundingClientRect();
+    if (!rect) return;
+
+    const localX = e.clientX - rect.left;
+    const localY = e.clientY - rect.top;
+
+    const delta = -e.deltaY;
+    const factor = delta > 0 ? 1.05 : 0.95;
+    const newScale = Math.min(Math.max(transform.scale * factor, 0.6), 2.0);
+
+    setTransform(prev => {
+      const scaleRatio = newScale / prev.scale;
+      return {
+        scale: newScale,
+        x: localX - (localX - prev.x) * scaleRatio,
+        y: localY - (localY - prev.y) * scaleRatio
+      };
+    });
   };
 
   const resetView = () => setTransform({ x: 0, y: 0, scale: 1 });
@@ -299,6 +370,7 @@ const FlowView = ({ statements, validationErrors, onEditNode }: FlowViewProps) =
       onPointerUp={handlePointerUp}
       onPointerCancel={handlePointerUp}
       onWheel={handleWheel}
+      style={{ touchAction: 'none' }}
     >
       {/* Canvas Controls */}
       <div className="absolute top-6 right-6 flex flex-col gap-2 z-50">
@@ -306,7 +378,12 @@ const FlowView = ({ statements, validationErrors, onEditNode }: FlowViewProps) =
           variant="secondary" 
           size="icon" 
           className="w-10 h-10 rounded-full shadow-premium bg-white/90 backdrop-blur-sm hover:bg-white"
-          onClick={() => setTransform(prev => ({ ...prev, scale: Math.min(prev.scale + 0.2, 2) }))}
+          onClick={() => {
+            setTransform(prev => {
+              const newScale = Math.min(prev.scale + 0.2, 2.0);
+              return { ...prev, scale: newScale };
+            });
+          }}
         >
           <ZoomIn className="w-5 h-5" />
         </Button>
@@ -314,7 +391,12 @@ const FlowView = ({ statements, validationErrors, onEditNode }: FlowViewProps) =
           variant="secondary" 
           size="icon" 
           className="w-10 h-10 rounded-full shadow-premium bg-white/90 backdrop-blur-sm hover:bg-white"
-          onClick={() => setTransform(prev => ({ ...prev, scale: Math.max(prev.scale - 0.2, 0.5) }))}
+          onClick={() => {
+            setTransform(prev => {
+              const newScale = Math.max(prev.scale - 0.2, 0.6);
+              return { ...prev, scale: newScale };
+            });
+          }}
         >
           <ZoomOut className="w-5 h-5" />
         </Button>
@@ -335,8 +417,8 @@ const FlowView = ({ statements, validationErrors, onEditNode }: FlowViewProps) =
           y: transform.y, 
           scale: transform.scale 
         }}
-        transition={{ duration: 0.1, ease: "easeOut" }}
-        style={{ originX: 0.5, originY: 0.5, willChange: 'transform' }}
+        transition={{ duration: 0.05, ease: "linear" }}
+        style={{ originX: 0, originY: 0, willChange: 'transform', transform: 'translateZ(0)' }}
       >
         <div className="relative w-full h-full p-20">
           <svg className="absolute inset-0 w-full h-full pointer-events-none overflow-visible">
@@ -348,56 +430,79 @@ const FlowView = ({ statements, validationErrors, onEditNode }: FlowViewProps) =
                 <path d="M 0 0 L 10 5 L 0 10 z" fill="#FEB6BA" />
               </marker>
             </defs>
-            {statements.map(s => s.options.map(opt => {
-              if (!opt.nextId) return null;
-              const from = positions[s.id];
-              const to = positions[opt.nextId];
-              if (!from || !to) return null;
+            <AnimatePresence>
+              {statements.map(s => s.options.map(opt => {
+                if (!opt.nextId) return null;
+                const from = positions[s.id];
+                const to = positions[opt.nextId];
+                if (!from || !to) return null;
 
-              const x1 = from.x + 220;
-              const y1 = from.y + 60;
-              const x2 = to.x;
-              const y2 = to.y + 60;
+                const x1 = from.x + 220;
+                const y1 = from.y + 60;
+                const x2 = to.x;
+                const y2 = to.y + 60;
 
-              const dx = x2 - x1;
-              const cx1 = x1 + Math.max(dx / 2, 50);
-              const cx2 = x2 - Math.max(dx / 2, 50);
+                const dx = x2 - x1;
+                const cx1 = x1 + Math.max(dx / 2, 50);
+                const cx2 = x2 - Math.max(dx / 2, 50);
 
-              return (
-                <motion.path
-                  key={`${s.id}-${opt.id}`}
-                  d={`M ${x1} ${y1} C ${cx1} ${y1}, ${cx2} ${y2}, ${x2} ${y2}`}
-                  fill="none"
-                  stroke={opt.isCorrect ? '#A8E6CF' : '#FEB6BA'}
-                  strokeWidth="3"
-                  strokeDasharray={opt.isCorrect ? "0" : "8,5"}
-                  markerEnd={opt.isCorrect ? "url(#arrow-correct)" : "url(#arrow-wrong)"}
-                  initial={{ opacity: 0 }}
-                  animate={{ opacity: 0.6 }}
-                  className="transition-all duration-300"
-                />
-              );
-            }))}
+                return (
+                  <motion.path
+                    key={`${s.id}-${opt.id}`}
+                    animate={{ 
+                      d: `M ${x1} ${y1} C ${cx1} ${y1}, ${cx2} ${y2}, ${x2} ${y2}`,
+                      opacity: 0.6 
+                    }}
+                    fill="none"
+                    stroke={opt.isCorrect ? '#A8E6CF' : '#FEB6BA'}
+                    strokeWidth="3"
+                    strokeDasharray={opt.isCorrect ? "0" : "8,5"}
+                    markerEnd={opt.isCorrect ? "url(#arrow-correct)" : "url(#arrow-wrong)"}
+                    initial={{ opacity: 0 }}
+                    exit={{ opacity: 0 }}
+                    transition={{ duration: 0.2 }}
+                    className="transition-colors duration-200"
+                  />
+                );
+              }))}
+            </AnimatePresence>
           </svg>
 
-          {statements.map((s, i) => {
-            const hasNodeError = validationErrors.some(e => e.statementId === s.id);
-            return (
-              <motion.div
-                key={s.id}
-                drag
-                dragMomentum={false}
-                onDrag={(_, info) => handleDrag(s.id, info.delta)}
-                style={{ 
-                  x: positions[s.id]?.x || 0, 
-                  y: positions[s.id]?.y || 0,
-                  position: 'absolute'
-                }}
-                className={cn(
-                  "w-[220px] scrapbook-card !p-5 cursor-grab active:cursor-grabbing z-10 hover:shadow-premium transition-all border-2 rounded-[28px] flow-node",
-                  hasNodeError ? "border-accent shadow-accent/20" : "border-transparent hover:border-primary/30"
-                )}
-              >
+          <AnimatePresence>
+            {statements.map((s, i) => {
+              const hasNodeError = validationErrors.some(e => e.statementId === s.id);
+              return (
+                <motion.div
+                  key={s.id}
+                  layout
+                  initial={{ opacity: 0, scale: 0.8 }}
+                  animate={{ 
+                    opacity: 1, 
+                    scale: 1,
+                    x: positions[s.id]?.x || 0, 
+                    y: positions[s.id]?.y || 0,
+                  }}
+                  exit={{ opacity: 0, scale: 0.8 }}
+                  transition={{ 
+                    type: "spring", 
+                    stiffness: 400, 
+                    damping: 40,
+                    opacity: { duration: 0.2 }
+                  }}
+                  drag
+                  dragMomentum={false}
+                  onDrag={(_, info) => handleDrag(s.id, info.delta)}
+                  style={{ 
+                    position: 'absolute',
+                    top: 0,
+                    left: 0,
+                    willChange: 'transform'
+                  }}
+                  className={cn(
+                    "w-[220px] scrapbook-card !p-5 cursor-grab active:cursor-grabbing z-10 transition-shadow border-2 rounded-[28px] flow-node",
+                    hasNodeError ? "border-accent shadow-accent/10" : "border-transparent hover:border-primary/20 hover:shadow-md"
+                  )}
+                >
                 <div className="absolute -top-1 -right-1 text-primary/40">
                   <Sparkles className="w-4 h-4" />
                 </div>
@@ -437,20 +542,9 @@ const FlowView = ({ statements, validationErrors, onEditNode }: FlowViewProps) =
               </motion.div>
             );
           })}
-        </div>
-      </motion.div>
-      
-      <div className="absolute bottom-6 left-1/2 -translate-x-1/2 bg-white/90 backdrop-blur-md px-6 py-3 rounded-full shadow-xl border border-primary/20 text-[11px] font-bold text-text-dark flex items-center gap-3 pointer-events-none animate-fade-in">
-        <div className="flex items-center gap-1.5">
-          <div className="w-2 h-2 rounded-full bg-highlight" />
-          <span>Correct Path</span>
-        </div>
-        <div className="w-px h-3 bg-secondary mx-1" />
-        <div className="flex items-center gap-1.5">
-          <div className="w-2 h-2 rounded-full bg-primary" />
-          <span>Wrong Path</span>
-        </div>
+        </AnimatePresence>
       </div>
+    </motion.div>
     </div>
   );
 };
@@ -489,6 +583,25 @@ const FloatingElements = () => {
   );
 };
 
+const WRONG_MESSAGES = [
+  "Oopsiee! That’s not the one 🥺💖",
+  "Aww nooo… try again cutie ✨",
+  "Hehe wrong choice 😝💞",
+  "Not this one silly! 💕",
+  "Almost there… try again 🌸",
+  "Naughty choice 😤💖 try again!",
+  "Oops! My heart says no 😳💓",
+  "Try again baby 💕 you got this!"
+];
+
+const LOADING_MESSAGES = [
+  "Wait a bit Miss cutie...",
+  "Picking flowers...",
+  "Be patience my lady...",
+  "Pretty things takes time...",
+  "What a cutie is waiting..."
+];
+
 // --- Main App ---
 
 export default function App() {
@@ -496,14 +609,111 @@ export default function App() {
   const [builderView, setBuilderView] = useState<BuilderView>('LIST');
   const [isReady, setIsReady] = useState(false);
   const [statements, setStatements] = useState<Statement[]>([]);
+  const [endings, setEndings] = useState<Ending[]>([]);
+  const [ending, setEnding] = useState<{ title: string; subtitle: string }>({
+    title: "You chose love 💖",
+    subtitle: "I knew you would… 🥺"
+  });
   const [hasError, setHasError] = useState(false);
+  const [endingActive, setEndingActive] = useState(false);
+  const [currentEndingDisplay, setCurrentEndingDisplay] = useState<{title: string, subtitle: string} | null>(null);
+  const [showEndingModal, setShowEndingModal] = useState(false);
   
+  // Manage body classes for UI isolation
+  useEffect(() => {
+    document.body.classList.toggle('ending-active', endingActive);
+    document.body.classList.toggle('ending-panel-open', showEndingModal);
+  }, [endingActive, showEndingModal]);
+
   const [currentStatementId, setCurrentStatementId] = useState<string | null>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [showWrongPopup, setShowWrongPopup] = useState(false);
   const [wrongMessage, setWrongMessage] = useState('');
+  const [lastWrongMsgIndex, setLastWrongMsgIndex] = useState<number | null>(null);
   const [showErrorDialog, setShowErrorDialog] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
+  const [saveStatus, setSaveStatus] = useState<'Saved 💾' | 'Saving...'>('Saved 💾');
+  const [soundOn, setSoundOn] = useState(true);
+  const [statementToDelete, setStatementToDelete] = useState<string | null>(null);
+  const isDeletingRef = useRef(false);
+
+  // Load on start
+  useEffect(() => {
+    setSoundOn(loadSoundPreference());
+    
+    const saved = localStorage.getItem('cute_app_data');
+    if (saved) {
+      try {
+        const parsed = JSON.parse(saved);
+        if (parsed.ending) setEnding(parsed.ending);
+        
+        let loadedEndings: Ending[] = parsed.endings || [];
+        let loadedStatements: Statement[] = parsed.statements || [];
+
+        // MIGRATION: Auto-convert inline option.ending -> centralized endings
+        let needsSave = false;
+        loadedStatements = loadedStatements.map(stmt => {
+          return {
+            ...stmt,
+            options: stmt.options.map(opt => {
+              if (opt.ending && !opt.endingId) {
+                const newEndingId = `end-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
+                loadedEndings.push({
+                  id: newEndingId,
+                  title: opt.ending.title,
+                  subtitle: opt.ending.subtitle
+                });
+                needsSave = true;
+                return {
+                  ...opt,
+                  endingId: newEndingId
+                };
+              }
+              return opt;
+            })
+          };
+        });
+
+        setEndings(loadedEndings);
+        setStatements(loadedStatements);
+        
+        if (needsSave) {
+          localStorage.setItem('cute_app_data', JSON.stringify({ statements: loadedStatements, ending: parsed.ending, endings: loadedEndings }));
+        }
+
+      } catch (e) {
+        console.error('Failed to parse saved data', e);
+      }
+    } else {
+      // Only set defaults if no data exists at all (first run)
+      setStatements(DEFAULT_STATEMENTS);
+    }
+  }, []);
+
+  // Sync endingActive
+  useEffect(() => {
+    setEndingActive(currentStatementId === 'END');
+  }, [currentStatementId]);
+
+  // Debounced Save
+  useEffect(() => {
+    setSaveStatus('Saving...');
+    const timer = setTimeout(() => {
+      localStorage.setItem('cute_app_data', JSON.stringify({ statements, ending, endings }));
+      setSaveStatus('Saved 💾');
+    }, 500);
+    return () => clearTimeout(timer);
+  }, [statements, ending, endings]);
+
+  const toggleSound = () => {
+    const newState = !soundOn;
+    setSoundOn(newState);
+    setSoundEnabled(newState);
+    if (newState) {
+      initAudio();
+      playSound('click');
+    }
+  };
 
   const validationErrors = useMemo(() => {
     const errors: ValidationError[] = [];
@@ -751,12 +961,14 @@ export default function App() {
     }
 
     setCurrentStatementId(statements[0].id);
+    setEndingActive(false);
     setMode('VIEWER');
   };
 
   const resetBuilder = () => {
-    if (confirm('Are you sure you want to reset everything?')) {
+    if (confirm('Are you sure you want to reset everything? This will clear all your progress.')) {
       setStatements(DEFAULT_STATEMENTS);
+      localStorage.removeItem('cute_app_data');
     }
   };
 
@@ -798,24 +1010,101 @@ export default function App() {
     [statements, currentStatementId]
   );
 
-  const handleOptionSelect = (option: Option) => {
+  const createRipple = (x: number, y: number) => {
+    playSound('ripple');
+    const layer = document.getElementById('bg-animation-layer');
+    if (!layer) return;
+    const ripple = document.createElement('div');
+    ripple.className = 'ripple';
+    const gradients = [
+      'radial-gradient(circle, #FF9AA2 0%, #FFB7B2 100%)',
+      'radial-gradient(circle, #FEC8D8 0%, #FF9CEE 100%)',
+      'radial-gradient(circle, #FFD6A5 0%, #FFAAA5 100%)'
+    ];
+    ripple.style.background = gradients[Math.floor(Math.random() * gradients.length)];
+    // Adjust coordinates relative to the layer which is inset: 0
+    ripple.style.left = `${x - 50}px`;
+    ripple.style.top = `${y - 50}px`;
+    layer.appendChild(ripple);
+    setTimeout(() => ripple.remove(), 600);
+  };
+
+  const handleOptionSelect = (option: Option, x?: number, y?: number) => {
+    if (endingActive) return;
     if (!option) return;
+    
+    // Play interaction sound based on correctness or if it brings you to ending
+    const isEndingBound = option.endingId || option.ending || (option.isCorrect && !option.nextId);
+    
+    if (isEndingBound) {
+      playSound('ending');
+    } else if (option.isCorrect) {
+      playSound('correct');
+    } else {
+      playSound('wrong');
+    }
+    
+    // 1. Centralized Ending
+    if (option.endingId) {
+      if (x !== undefined && y !== undefined && option.isCorrect) createRipple(x, y);
+      const selectedEnding = endings.find(e => e.id === option.endingId);
+      if (selectedEnding) setCurrentEndingDisplay(selectedEnding);
+      setTimeout(() => {
+        setEndingActive(true);
+        setCurrentStatementId('END');
+      }, option.isCorrect ? 300 : 0);
+      return;
+    }
+
+    // 2. Legacy Inline Ending
+    if (option.ending) {
+      if (x !== undefined && y !== undefined && option.isCorrect) createRipple(x, y);
+      setCurrentEndingDisplay(option.ending);
+      setTimeout(() => {
+        setEndingActive(true);
+        setCurrentStatementId('END');
+      }, option.isCorrect ? 300 : 0);
+      return;
+    }
+
+    if (option.isCorrect && !option.nextId) {
+      setCurrentEndingDisplay(null); // use global fallback
+      setEndingActive(true);
+      setCurrentStatementId('END');
+      return;
+    }
     
     if (option.isCorrect) {
       if (option.nextId) {
+        // Trigger ripple
+        if (x !== undefined && y !== undefined) createRipple(x, y);
         // Safety check: Does the next statement actually exist?
         const exists = statements.some(s => s.id === option.nextId);
         if (exists) {
-          setCurrentStatementId(option.nextId);
+          setTimeout(() => setCurrentStatementId(option.nextId!), 300);
         } else {
           console.warn(`Statement with ID ${option.nextId} not found. Ending sequence.`);
+          setCurrentEndingDisplay(null);
+          setEndingActive(true);
           setCurrentStatementId('END');
         }
       } else {
+        setCurrentEndingDisplay(null);
+        setEndingActive(true);
         setCurrentStatementId('END');
       }
     } else {
-      setWrongMessage(option.wrongMessage || "Oops! Try again 🍓");
+      if (option.wrongMessage) {
+        setWrongMessage(option.wrongMessage);
+      } else {
+        let nextIndex;
+        do {
+          nextIndex = Math.floor(Math.random() * WRONG_MESSAGES.length);
+        } while (nextIndex === lastWrongMsgIndex && WRONG_MESSAGES.length > 1);
+        
+        setLastWrongMsgIndex(nextIndex);
+        setWrongMessage(WRONG_MESSAGES[nextIndex]);
+      }
       setShowWrongPopup(true);
     }
   };
@@ -844,37 +1133,119 @@ export default function App() {
 
   if (!isReady) {
     return (
-      <div className="min-h-screen flex flex-col items-center justify-center p-4 bg-background text-text-dark relative overflow-hidden">
+      <motion.div 
+        initial={{ opacity: 1 }}
+        exit={{ opacity: 0 }}
+        transition={{ duration: 0.2 }}
+        className="min-h-screen flex flex-col items-center justify-center p-6 bg-gradient-to-b from-[#FFF2E0] to-[#FFC0CB] text-text-dark relative overflow-hidden"
+      >
         <FloatingElements />
-        <div className="text-8xl mb-8 animate-bounce">🍓</div>
-        <p className="font-heading font-extrabold text-3xl animate-pulse tracking-tight text-gradient">Loading your cute story... 💕</p>
-      </div>
+        
+        <div className="relative flex flex-col items-center">
+          {/* Main Loader: Refined Floating Heart */}
+          <div className="relative mb-10 w-24 h-24 flex items-center justify-center">
+            <motion.div
+              animate={{ 
+                y: [0, -8, 0],
+                scale: [0.96, 1, 0.96],
+              }}
+              transition={{ 
+                duration: 1.8, 
+                repeat: Infinity, 
+                ease: "easeInOut" 
+              }}
+              className="relative z-10 w-20 h-20 bg-premium-gradient rounded-[2rem] flex items-center justify-center shadow-premium ring-4 ring-white/50 backdrop-blur-sm"
+            >
+              <Heart className="w-10 h-10 text-white fill-white drop-shadow-sm" />
+            </motion.div>
+            
+            {/* Tiny secondary floating elements (Hearts & Sparkles) */}
+            {[0, 1, 2].map((i) => (
+              <motion.div
+                key={i}
+                initial={{ opacity: 0, y: 20, scale: 0.5 }}
+                animate={{ 
+                  opacity: [0, 1, 0],
+                  y: [-10, -60],
+                  x: [(i - 1) * 40, (i - 1) * 50 + (i === 1 ? 0 : (i === 0 ? -15 : 15))],
+                  scale: [0.5, 1, 0.8]
+                }}
+                transition={{
+                  duration: 2.2,
+                  repeat: Infinity,
+                  delay: i * 0.7,
+                  ease: "easeOut"
+                }}
+                className="absolute text-accent"
+              >
+                {i % 2 === 0 ? <Heart className="w-4 h-4 fill-current" /> : <Sparkles className="w-5 h-5" />}
+              </motion.div>
+            ))}
+          </div>
+
+          {/* Loading Text */}
+          <div className="text-center space-y-3">
+            <LoadingMessage />
+            
+            <motion.p 
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 0.6 }}
+              transition={{ delay: 0.4 }}
+              className="text-[11px] font-bold uppercase tracking-[2px] text-text-dark/40"
+            >
+              Almost ready…
+            </motion.p>
+          </div>
+
+          {/* Progress Indicator: Sequential Bouncing Dots */}
+          <div className="mt-10 flex gap-2.5">
+            {[0, 1, 2].map(i => (
+              <motion.div
+                key={i}
+                animate={{ 
+                  y: [0, -8, 0],
+                  opacity: [0.3, 1, 0.3],
+                  scale: [0.9, 1.1, 0.9]
+                }}
+                transition={{ 
+                  duration: 0.8, 
+                  repeat: Infinity, 
+                  delay: i * 0.15,
+                  ease: "easeInOut" 
+                }}
+                className="w-2.5 h-2.5 rounded-full bg-accent/60 shadow-sm"
+              />
+            ))}
+          </div>
+        </div>
+      </motion.div>
     );
   }
 
-  // Final safety check for statements
-  const safeStatements = statements.length > 0 ? statements : DEFAULT_STATEMENTS;
-
+  // Final safety check for statements removed
+  
   return (
-    <div className="min-h-screen p-4 md:p-8 pb-24 flex flex-col items-center overflow-x-hidden relative">
-      <FloatingElements />
-      {/* Header */}
-      <motion.header 
-        initial={{ opacity: 0 }}
-        animate={{ opacity: 1 }}
-        transition={{ duration: 0.2 }}
-        className="text-center mb-12 space-y-2"
-      >
-        <div className="flex items-center justify-center gap-3">
-          <Sparkles className="w-8 h-8 text-primary" />
-          <h1 className="text-5xl md:text-6xl font-heading font-extrabold tracking-tight text-gradient">
-            Cutie
-          </h1>
-          <Heart className="w-8 h-8 text-primary fill-primary" />
-        </div>
-      </motion.header>
+    <div className="min-h-screen relative">
+      <div className="bg-animation-layer" id="bg-animation-layer" />
+      <div className="relative z-10 p-4 md:p-8 pb-24 flex flex-col items-center overflow-x-hidden">
+        <FloatingElements />
+        {/* Header */}
+        <motion.header 
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          transition={{ duration: 0.2 }}
+          className="text-center mb-12 space-y-2"
+        >
+          <div className="flex items-center justify-center gap-3">
+            <Sparkles className="w-8 h-8 text-primary" />
+            <h1 className="text-5xl md:text-6xl font-heading font-extrabold tracking-tight text-gradient">
+              Cutie
+            </h1>
+            <Heart className="w-8 h-8 text-primary fill-primary" />
+          </div>
+        </motion.header>
 
-      <main className="w-full max-w-4xl">
+      <main className="w-full max-w-4xl relative z-10">
         <AnimatePresence mode="wait">
           {mode === 'BUILDER' ? (
             <motion.div
@@ -887,9 +1258,10 @@ export default function App() {
               style={{ willChange: 'transform, opacity' }}
             >
               {/* Toolbar */}
-              <div className="flex flex-wrap gap-4 justify-center md:justify-between items-center bg-white/90 backdrop-blur-md p-6 rounded-[28px] shadow-soft sticky top-4 z-10 border border-white/50">
-                <div className="flex gap-3 items-center">
-                  {/* Validation Status */}
+              <div className="bottom-controls builder-controls bg-white/90 backdrop-blur-md p-5 rounded-[32px] shadow-soft sticky top-4 z-10 border border-white/50 space-y-4">
+                {/* Row 1: Primary Status & Action */}
+                <div className="flex items-center justify-between">
+                  {/* Status Badge */}
                   <div className={cn(
                     "flex items-center gap-2 px-4 py-1.5 rounded-full border transition-all duration-300",
                     validationErrors.length > 0 
@@ -913,11 +1285,34 @@ export default function App() {
                     )}
                   </div>
 
-                  <div className="w-px h-8 bg-secondary/50 mx-1 hidden md:block" />
+                  {/* Main Action */}
+                  <Button 
+                    onClick={() => {
+                      if (validationErrors.length > 0) {
+                        setErrorMessage(`Please fix ${validationErrors.length} error(s) before continuing! 💔`);
+                        setShowErrorDialog(true);
+                      } else {
+                        startViewer();
+                      }
+                    }} 
+                    className={cn(
+                      "pill-button font-bold text-sm px-6 h-10 transition-all duration-300",
+                      validationErrors.length === 0 ? "bg-premium-gradient shadow-lg shadow-primary/20" : "bg-secondary text-muted-foreground"
+                    )}
+                  >
+                    Finish & Run ▶
+                  </Button>
+                </div>
 
-                  <Button variant="ghost" onClick={exportConfig} className="rounded-full hover:bg-primary/10">
+                {/* Divider Line */}
+                <div className="h-px bg-secondary/20 w-full" />
+
+                {/* Row 2: Secondary Actions */}
+                <div className="flex items-center justify-center gap-3">
+                  <Button variant="ghost" onClick={exportConfig} className="rounded-full hover:bg-primary/10 text-xs font-bold text-muted-foreground h-9 px-4">
                     <Download className="w-4 h-4 mr-2" /> Export
                   </Button>
+                  
                   <div className="relative">
                     <input 
                       type="file" 
@@ -925,27 +1320,15 @@ export default function App() {
                       onChange={importConfig} 
                       className="absolute inset-0 opacity-0 cursor-pointer"
                     />
-                    <Button variant="ghost" className="rounded-full hover:bg-primary/10">
+                    <Button variant="ghost" className="rounded-full hover:bg-primary/10 text-xs font-bold text-muted-foreground h-9 px-4">
                       <Upload className="w-4 h-4 mr-2" /> Import
                     </Button>
                   </div>
+
+                  <Button variant="ghost" onClick={() => setShowEndingModal(true)} className="rounded-full hover:bg-primary/10 text-xs font-bold text-muted-foreground h-9 px-4">
+                    <Heart className="w-4 h-4 mr-2" /> Endings 💖
+                  </Button>
                 </div>
-                <Button 
-                  onClick={() => {
-                    if (validationErrors.length > 0) {
-                      setErrorMessage(`Please fix ${validationErrors.length} error(s) before continuing! 💔`);
-                      setShowErrorDialog(true);
-                    } else {
-                      startViewer();
-                    }
-                  }} 
-                  className={cn(
-                    "pill-button transition-all duration-300",
-                    validationErrors.length === 0 ? "bg-premium-gradient" : "bg-secondary text-muted-foreground"
-                  )}
-                >
-                  <Play className="w-4 h-4 mr-2" /> Finish & Run
-                </Button>
               </div>
 
               {builderView === 'LIST' ? (
@@ -980,7 +1363,10 @@ export default function App() {
                                 <Button 
                                   variant="ghost" 
                                   size="icon" 
-                                  onClick={() => deleteStatement(statement.id)}
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setStatementToDelete(statement.id);
+                                  }}
                                   className="text-muted-foreground hover:text-accent hover:bg-accent/10 rounded-full"
                                 >
                                   <Trash2 className="w-5 h-5" />
@@ -1016,10 +1402,10 @@ export default function App() {
                                     ))}
                                   </div>
                                   
-                                  <div className="grid gap-4">
+                                  <div className="flex flex-col gap-4 w-full max-w-full">
                                     {statement.options.map((option, optIdx) => (
                                       <div key={option.id} className={cn(
-                                        "p-3 px-4 rounded-2xl bg-secondary/10 border relative group transition-all hover:bg-secondary/20",
+                                        "p-3 px-4 rounded-2xl bg-secondary/10 border relative group transition-all hover:bg-secondary/20 w-full flex flex-col",
                                         validationErrors.some(e => e.statementId === statement.id && e.optionId === option.id) 
                                           ? "border-accent/30 bg-accent/5" 
                                           : "border-secondary/30"
@@ -1029,15 +1415,15 @@ export default function App() {
                                             variant="ghost"
                                             size="icon"
                                             onClick={() => deleteOption(statement.id, option.id)}
-                                            className="absolute -top-2 -right-2 w-7 h-7 rounded-full bg-white shadow-sm border border-secondary text-muted-foreground hover:text-accent hover:bg-accent/10 transition-all z-10"
+                                            className="absolute top-2 right-2 w-7 h-7 rounded-full bg-white shadow-sm border border-secondary text-muted-foreground hover:text-accent hover:bg-accent/10 transition-all z-10"
                                           >
                                             <XIcon className="w-3.5 h-3.5" />
                                           </Button>
                                         )}
 
-                                        <div className="flex flex-wrap items-center gap-3">
-                                          <div className="flex flex-col flex-1 min-w-[180px]">
-                                            <div className="flex items-center gap-2">
+                                        <div className="flex flex-col sm:flex-row flex-wrap items-start sm:items-center gap-3 w-full mt-2 sm:mt-0">
+                                          <div className="flex flex-col flex-1 w-full min-w-0">
+                                            <div className="flex items-center gap-2 w-full">
                                               <span className="w-5 h-5 rounded-full bg-secondary flex-shrink-0 flex items-center justify-center text-[10px] font-bold text-text-dark/50">
                                                 {optIdx + 1}
                                               </span>
@@ -1045,7 +1431,7 @@ export default function App() {
                                                 value={option.text}
                                                 onChange={(e) => updateOption(statement.id, option.id, { text: e.target.value })}
                                                 className={cn(
-                                                  "rounded-lg bg-white border-none shadow-sm font-semibold h-8 w-full text-sm transition-all",
+                                                  "rounded-lg bg-white border-none shadow-sm font-semibold h-8 w-full text-sm transition-all flex-1 min-w-0 break-words",
                                                   validationErrors.some(e => e.statementId === statement.id && e.optionId === option.id && e.field === 'optionText') && "ring-2 ring-accent/50"
                                                 )}
                                                 placeholder="Option text..."
@@ -1056,33 +1442,39 @@ export default function App() {
                                             ))}
                                           </div>
                                           
-                                          <div className="flex items-center gap-3 flex-shrink-0">
-                                            <div className="flex items-center gap-2 bg-white/50 px-2 py-1 rounded-lg border border-secondary/20">
-                                              <Label htmlFor={`correct-${option.id}`} className="text-[10px] font-semibold uppercase tracking-widest cursor-pointer whitespace-nowrap text-muted-foreground">
+                                          <div className="flex flex-row flex-wrap sm:flex-nowrap items-center gap-3 w-full sm:w-auto flex-shrink-0">
+                                            <div className="flex items-center gap-2 bg-white/50 px-2 py-1 rounded-lg border border-secondary/20 flex-shrink-0">
+                                              <Label htmlFor={`correct-${option.id}`} className="text-[10px] font-semibold uppercase tracking-widest cursor-pointer whitespace-nowrap text-muted-foreground mt-0.5">
                                                 {option.isCorrect ? 'Correct' : 'Wrong'}
                                               </Label>
                                               <Switch 
                                                 id={`correct-${option.id}`}
                                                 checked={option.isCorrect}
                                                 onCheckedChange={(val) => updateOption(statement.id, option.id, { isCorrect: val })}
-                                                className="scale-75 data-[state=checked]:bg-accent"
+                                                className="scale-75 data-[state=checked]:bg-accent m-0 flex-shrink-0"
                                               />
                                             </div>
 
                                             {option.isCorrect ? (
-                                              <div className="flex flex-col min-w-[120px]">
+                                              <div className="flex flex-col gap-2 flex-grow sm:flex-grow-0 sm:min-w-[140px] w-full sm:w-auto">
                                                 <Select 
                                                   value={option.nextId || 'END'} 
-                                                  onValueChange={(val) => updateOption(statement.id, option.id, { nextId: val === 'END' ? null : val })}
+                                                  onValueChange={(val) => {
+                                                    if (val === 'END') {
+                                                      updateOption(statement.id, option.id, { nextId: null });
+                                                    } else {
+                                                      updateOption(statement.id, option.id, { nextId: val, endingId: null });
+                                                    }
+                                                  }}
                                                 >
                                                   <SelectTrigger className={cn(
                                                     "rounded-lg bg-white border-none shadow-sm h-8 text-[10px] font-bold w-full transition-all",
                                                     validationErrors.some(e => e.statementId === statement.id && e.optionId === option.id && e.field === 'nextId') && "ring-2 ring-accent/50"
                                                   )}>
-                                                    <SelectValue placeholder="Next" />
+                                                    <SelectValue placeholder="Next Step" />
                                                   </SelectTrigger>
-                                                  <SelectContent className="rounded-xl border-none shadow-xl">
-                                                    <SelectItem value="END">End 🏁</SelectItem>
+                                                  <SelectContent className="rounded-[20px] border border-secondary/20 shadow-2xl bg-[#FFF2E0]/95 backdrop-blur-md z-[9999] isolate">
+                                                    <SelectItem value="END">Ending 🏁</SelectItem>
                                                     {statements
                                                       .map((s, idx) => ({ ...s, originalIndex: idx }))
                                                       .filter(s => s.id !== statement.id)
@@ -1094,12 +1486,32 @@ export default function App() {
                                                     }
                                                   </SelectContent>
                                                 </Select>
+
+                                                {!option.nextId && endings.length > 0 && (
+                                                  <Select
+                                                    value={option.endingId || 'GLOBAL'}
+                                                    onValueChange={(val) => updateOption(statement.id, option.id, { endingId: val === 'GLOBAL' ? null : val })}
+                                                  >
+                                                    <SelectTrigger className="rounded-lg bg-primary/10 border-none shadow-sm h-8 text-[10px] font-bold w-full transition-all text-primary">
+                                                      <SelectValue placeholder="Select Ending" />
+                                                    </SelectTrigger>
+                                                    <SelectContent className="rounded-[20px] border border-secondary/20 shadow-2xl bg-[#FFF2E0]/95 backdrop-blur-md z-[9999] isolate">
+                                                      <SelectItem value="GLOBAL">Global Fallback</SelectItem>
+                                                      {endings.map((e, idx) => (
+                                                        <SelectItem key={e.id} value={e.id}>
+                                                          {e.title || `Ending #${idx + 1}`}
+                                                        </SelectItem>
+                                                      ))}
+                                                    </SelectContent>
+                                                  </Select>
+                                                )}
+
                                                 {validationErrors.filter(e => e.statementId === statement.id && e.optionId === option.id && e.field === 'nextId').map((e, i) => (
                                                   <p key={i} className="text-[9px] text-accent font-bold mt-1">{e.message}</p>
                                                 ))}
                                               </div>
                                             ) : (
-                                              <div className="flex flex-col min-w-[120px]">
+                                              <div className="flex flex-col flex-grow sm:flex-grow-0 sm:min-w-[120px] w-full sm:w-auto">
                                                 <Input 
                                                   value={option.wrongMessage}
                                                   onChange={(e) => updateOption(statement.id, option.id, { wrongMessage: e.target.value })}
@@ -1166,7 +1578,7 @@ export default function App() {
               animate={{ opacity: 1, scale: 1 }}
               exit={{ opacity: 0, scale: 0.98 }}
               transition={{ duration: 0.15, ease: [0.22, 1, 0.36, 1] }}
-              className="flex flex-col items-center justify-center min-h-[60vh]"
+              className="flex flex-col items-center justify-center min-h-[60vh] relative"
               style={{ willChange: 'transform, opacity' }}
             >
               <AnimatePresence mode="wait">
@@ -1175,26 +1587,24 @@ export default function App() {
                     key="end"
                     initial={{ opacity: 0, scale: 0.95 }}
                     animate={{ opacity: 1, scale: 1 }}
-                    transition={{ duration: 0.15, ease: [0.22, 1, 0.36, 1] }}
-                    className="text-center space-y-8 scrapbook-card max-w-md w-full py-16 relative overflow-hidden"
+                    transition={{ duration: 0.2, ease: "easeOut" }}
+                    className="fixed inset-0 z-50 flex items-center justify-center p-6 bg-background/90 backdrop-blur-md"
                   >
-                    <div className="absolute top-0 right-0 text-primary/5 rotate-12">
-                      <Sparkles className="w-32 h-32" />
+                    <div className="text-center space-y-6 animate-in fade-in zoom-in duration-300">
+                      <h1 className="text-5xl md:text-6xl font-heading font-extrabold text-gradient">
+                        {currentEndingDisplay?.title || ending.title}
+                      </h1>
+                      {(currentEndingDisplay?.subtitle || ending.subtitle) && (
+                        <p className="text-2xl text-text-dark/80 font-bold">
+                          {currentEndingDisplay?.subtitle || ending.subtitle}
+                        </p>
+                      )}
+                      <div className="flex justify-center gap-4 text-primary/40 pt-8">
+                        <Heart className="w-8 h-8 fill-current animate-pulse" />
+                        <Sparkles className="w-8 h-8 animate-pulse delay-700" />
+                        <Heart className="w-8 h-8 fill-current animate-pulse delay-1000" />
+                      </div>
                     </div>
-                    <div className="relative inline-block">
-                      <div className="text-8xl animate-bounce">🍓</div>
-                      <Sparkles className="absolute -top-2 -right-2 text-primary w-10 h-10" />
-                    </div>
-                    <div className="space-y-4">
-                      <h2 className="text-4xl font-heading font-extrabold text-text-dark tracking-tight">The End! 💖</h2>
-                      <p className="text-text-dark/60 font-semibold text-lg">You've completed the journey! Hope it brought a smile to your face ✨</p>
-                    </div>
-                    <Button 
-                      onClick={() => setMode('BUILDER')} 
-                      className="pill-button bg-premium-gradient w-full"
-                    >
-                      <RotateCcw className="w-4 h-4 mr-2" /> Back to Builder
-                    </Button>
                   </motion.div>
                 ) : currentStatement ? (
                   <motion.div
@@ -1240,31 +1650,30 @@ export default function App() {
                         </div>
 
                         <div className="max-h-[40vh] overflow-y-auto pr-2 custom-scrollbar">
-                          <div className="grid gap-4 py-2">
+                          <div className="flex flex-col gap-3 py-2 w-full">
                             {currentStatement.options.map((option, i) => (
                               <motion.div
                                 key={option.id}
-                                whileHover={{ scale: 1.01 }}
-                                whileTap={{ scale: 0.96 }}
-                                animate={selectedId === option.id ? { 
-                                  scale: [1, 1.04, 1],
-                                  transition: { duration: 0.2 }
-                                } : {}}
+                                className="w-full flex"
+                                whileHover={selectedId !== option.id ? { scale: 1.01 } : {}}
+                                whileTap={selectedId !== option.id ? { scale: 0.98 } : {}}
                               >
                                 <Button
-                                  onClick={() => {
+                                  onClick={(e) => {
                                     setSelectedId(option.id);
-                                    handleOptionSelect(option);
+                                    handleOptionSelect(option, e.clientX, e.clientY);
                                   }}
                                   className={cn(
-                                    "pill-button w-full py-7 text-lg font-semibold transition-all",
+                                    "pill-button w-full min-h-[64px] h-auto flex text-left items-center justify-start overflow-hidden",
                                     i % 2 === 0 
                                       ? "bg-premium-gradient" 
                                       : "bg-white text-text-dark hover:bg-secondary/20 border-2 border-secondary/50",
-                                    selectedId === option.id && "ring-4 ring-primary/30 shadow-premium scale-[1.02]"
+                                    selectedId === option.id && "ring-4 ring-primary/30 shadow-premium brightness-95"
                                   )}
                                 >
-                                  {option.text}
+                                  <span className="line-clamp-2 w-full text-lg leading-tight font-bold">
+                                    {option.text}
+                                  </span>
                                 </Button>
                               </motion.div>
                             ))}
@@ -1272,16 +1681,6 @@ export default function App() {
                         </div>
                       </div>
                     </Card>
-                    
-                    <div className="mt-8 flex justify-center">
-                      <Button 
-                        variant="ghost" 
-                        onClick={() => setMode('BUILDER')}
-                        className="text-muted-foreground hover:text-primary hover:bg-white/40 rounded-full"
-                      >
-                        <Settings className="w-4 h-4 mr-2" /> Edit Mode
-                      </Button>
-                    </div>
                   </motion.div>
                 ) : null}
               </AnimatePresence>
@@ -1299,7 +1698,7 @@ export default function App() {
               initial={{ y: 20, opacity: 0 }}
               animate={{ y: 0, opacity: 1 }}
               exit={{ y: 20, opacity: 0 }}
-              className="fixed bottom-6 left-6 flex bg-white/90 backdrop-blur-md p-1.5 rounded-full shadow-premium border border-primary/20 z-[1000]"
+              className="list-flow-toggle fixed bottom-[calc(20px+env(safe-area-inset-bottom,24px))] left-6 flex bg-white/90 backdrop-blur-md p-1.5 rounded-full shadow-premium border border-primary/20 z-[1000]"
             >
               <Button 
                 variant={builderView === 'LIST' ? 'secondary' : 'ghost'} 
@@ -1333,7 +1732,7 @@ export default function App() {
               whileHover={{ scale: 1.1, y: -4, rotate: 5 }}
               whileTap={{ scale: 0.9 }}
               onClick={addStatement}
-              className="fixed bottom-6 right-6 w-16 h-16 bg-premium-gradient flex items-center justify-center z-[1000] rounded-full shadow-premium transition-all"
+              className="fab-button fixed bottom-[calc(20px+env(safe-area-inset-bottom,24px))] right-6 w-16 h-16 bg-premium-gradient flex items-center justify-center z-[1000] rounded-full shadow-premium transition-all"
               title="Add Statement"
             >
               <PlusIcon className="w-8 h-8" />
@@ -1344,41 +1743,50 @@ export default function App() {
 
       {/* Wrong Answer Popup */}
       <Dialog open={showWrongPopup} onOpenChange={setShowWrongPopup}>
-        <DialogContent className="sm:max-w-[400px] rounded-[28px] border-none bg-white p-0 overflow-hidden shadow-premium">
+        <DialogContent className="sm:max-w-[400px] w-[90vw] rounded-[32px] border-none bg-gradient-to-br from-[#FFF5F7] to-[#FFE4E1] p-0 overflow-hidden shadow-2xl">
           <motion.div
             initial={{ scale: 0.95, opacity: 0 }}
-            animate={{ scale: 1, opacity: 1 }}
-            transition={{ duration: 0.2, ease: "easeOut" }}
-            className="p-10 text-center space-y-8 relative"
+            animate={{ scale: [0.95, 1.02, 1], opacity: 1 }}
+            transition={{ duration: 0.3, ease: "easeOut" }}
+            className="p-10 text-center space-y-6 relative flex flex-col justify-center items-center"
             style={{ willChange: 'transform, opacity' }}
           >
-            <div className="absolute top-2 right-2 text-primary/10">
-              <Sparkles className="w-12 h-12" />
+            {/* Background elements */}
+            <div className="absolute top-4 left-4 text-primary/40 rotate-12">
+              <Heart className="w-8 h-8 fill-current" />
             </div>
-            <div className="flex justify-center">
-              <div className="bg-primary/10 p-6 rounded-full">
-                <span className="text-5xl">🥺</span>
-              </div>
+            <div className="absolute bottom-10 right-4 text-highlight/40 -rotate-12 opacity-30">
+              <Sparkles className="w-10 h-10" />
             </div>
             
-            <div className="space-y-3">
-              <DialogTitle className="text-2xl font-heading font-extrabold text-text-dark">Oh no! 🌸✨</DialogTitle>
-              <DialogDescription className="text-lg text-text-dark/80 font-semibold leading-relaxed">
-                {wrongMessage || "That's not quite right! Try again? 🍓"}
+            <div className="space-y-6 z-10 relative flex-grow flex flex-col justify-center">
+              <DialogDescription className="text-xl text-[#5A3E3B] font-bold leading-relaxed px-2 text-center break-words">
+                {wrongMessage}
               </DialogDescription>
             </div>
 
-            <DialogFooter className="sm:justify-center">
+            <DialogFooter className="flex justify-center items-center w-full z-10 mt-4">
               <Button 
                 onClick={() => setShowWrongPopup(false)}
-                className="pill-button bg-premium-gradient px-16"
+                className="pill-button bg-premium-gradient px-12 py-6 text-lg hover:shadow-primary/30 active:scale-95 transition-all group w-full max-w-[200px]"
               >
-                Try Again 💖
+                Try again <Heart className="ml-2 w-5 h-5 group-hover:scale-125 transition-transform" />
               </Button>
             </DialogFooter>
           </motion.div>
         </DialogContent>
       </Dialog>
+      
+      {/* Ending Message Dialog */}
+      <EndingMessageDialog 
+        open={showEndingModal} 
+        onOpenChange={setShowEndingModal} 
+        ending={ending} 
+        setEnding={setEnding}
+        endings={endings}
+        setEndings={setEndings}
+      />
+
 
       {/* Error Dialog */}
       <Dialog open={showErrorDialog} onOpenChange={setShowErrorDialog}>
@@ -1415,10 +1823,79 @@ export default function App() {
         </DialogContent>
       </Dialog>
 
+      {/* Delete Statement Confirm Dialog */}
+      <Dialog open={!!statementToDelete} onOpenChange={(open) => !open && setStatementToDelete(null)}>
+        <DialogContent className="sm:max-w-[400px] rounded-[28px] border-none bg-white p-0 overflow-hidden shadow-premium">
+          <motion.div
+             initial={{ scale: 0.95, opacity: 0 }}
+             animate={{ scale: 1, opacity: 1 }}
+             transition={{ duration: 0.2, ease: "easeOut" }}
+             className="p-10 text-center space-y-8 relative pointer-events-auto"
+             onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex justify-center">
+              <div className="bg-destructive/10 p-6 rounded-full">
+                <Trash2 className="w-12 h-12 text-destructive" />
+              </div>
+            </div>
+            
+            <div className="space-y-3">
+              <DialogTitle className="text-2xl font-heading font-extrabold text-text-dark">Confirm Deletion</DialogTitle>
+              <DialogDescription className="text-lg text-text-dark/80 font-semibold leading-relaxed">
+                Are you sure you want to delete this statement?
+              </DialogDescription>
+            </div>
+
+            <DialogFooter className="sm:justify-center flex w-full gap-3 mt-4">
+              <Button 
+                variant="outline"
+                onClick={(e) => {
+                   e.stopPropagation();
+                   setStatementToDelete(null);
+                }}
+                className="rounded-full font-bold w-full uppercase text-xs tracking-wider border-secondary/50"
+              >
+                Cancel ❌
+              </Button>
+              <Button 
+                onClick={(e) => {
+                  e.stopPropagation();
+                  if (isDeletingRef.current) return;
+                  isDeletingRef.current = true;
+
+                  if (statementToDelete) {
+                    deleteStatement(statementToDelete);
+                  }
+                  
+                  setStatementToDelete(null);
+                  setTimeout(() => {
+                    isDeletingRef.current = false;
+                  }, 300);
+                }}
+                className="rounded-full bg-accent/15 hover:bg-accent/25 text-accent font-extrabold w-full uppercase text-xs tracking-widest transition-all active:scale-95 shadow-sm"
+              >
+                Delete 💔
+              </Button>
+            </DialogFooter>
+          </motion.div>
+        </DialogContent>
+      </Dialog>
+
       {/* Footer Decoration */}
-      <footer className="mt-auto py-8 text-muted-foreground text-sm flex items-center gap-2">
-        Made with <Heart className="w-4 h-4 text-primary fill-primary" /> for cuties
+      <footer className="mt-auto py-8 text-muted-foreground text-sm flex flex-col items-center gap-4">
+        {mode === 'BUILDER' && (
+          <div className={cn(
+            "px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider backdrop-blur-sm transition-all duration-300",
+            saveStatus === 'Saving...' ? "bg-accent/10 text-accent" : "bg-primary/10 text-primary"
+          )}>
+            {saveStatus}
+          </div>
+        )}
+        <div className="flex items-center gap-2">
+          Made with <Heart className="w-4 h-4 text-primary fill-primary" /> for cuties
+        </div>
       </footer>
+      </div>
     </div>
   );
 }
