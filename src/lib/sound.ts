@@ -3,88 +3,13 @@
 let audioCtx: AudioContext | null = null;
 let isSoundEnabled = true;
 
-let musicBuffer: AudioBuffer | null = null;
-let musicSource: AudioBufferSourceNode | null = null;
-let musicGain: GainNode | null = null;
-
-export const getAudioContext = () => {
+// Initialize on first user interaction
+export const initAudio = () => {
   if (!audioCtx) {
     audioCtx = new (window.AudioContext || (window as any).webkitAudioContext)();
   }
-  return audioCtx;
-};
-
-// Initialize on first user interaction
-export const initAudio = () => {
-  getAudioContext();
-  if (audioCtx?.state === 'suspended') {
+  if (audioCtx.state === 'suspended') {
     audioCtx.resume();
-  }
-};
-
-export const unlockAudio = async () => {
-  const ctx = getAudioContext();
-  if (ctx.state === 'suspended') {
-    await ctx.resume();
-  }
-};
-
-export const loadMusic = async () => {
-  try {
-    const ctx = getAudioContext();
-    const response = await fetch('/cute.mp3');
-    const arrayBuffer = await response.arrayBuffer();
-    musicBuffer = await ctx.decodeAudioData(arrayBuffer);
-  } catch (e) {
-    console.error("Failed to load music:", e);
-  }
-};
-
-export const startMusic = async () => {
-  console.log("START MUSIC CALLED");
-  console.log("Buffer:", musicBuffer);
-
-  const ctx = getAudioContext();
-
-  if (!musicBuffer) {
-    console.log("Loading music...");
-    await loadMusic();
-  }
-
-  if (!musicBuffer) {
-    console.error("Music buffer failed to load");
-    return;
-  }
-
-  if (musicSource) {
-    console.log("Music already playing");
-    return;
-  }
-
-  musicSource = ctx.createBufferSource();
-  musicGain = ctx.createGain();
-
-  musicSource.buffer = musicBuffer;
-  musicSource.loop = true;
-
-  musicGain.gain.value = 0.4;
-
-  musicSource.connect(musicGain);
-  musicGain.connect(ctx.destination);
-
-  (window as any).__musicSource = musicSource;
-
-  musicSource.start(ctx.currentTime + 0.05);
-
-  console.log("Music started successfully");
-};
-
-export const stopMusic = () => {
-  if (musicSource) {
-    musicSource.stop();
-    musicSource.disconnect();
-    musicSource = null;
-    (window as any).__musicSource = null;
   }
 };
 

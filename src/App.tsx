@@ -86,6 +86,7 @@ import {
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { cn } from '@/lib/utils';
 import { useAppContext, AppMode } from './store/AppContext';
+import { BuilderTopPanel } from './components/Builder/BuilderTopPanel';
 import { getErrors } from '@/lib/validation';
 import { ValidationError, User, Statement, Ending, Option, EntryMessage } from './types';
 
@@ -602,7 +603,8 @@ export default function App() {
   const [showErrorDialog, setShowErrorDialog] = useState(false);
   const [saveStatus, setSaveStatus] = useState<'Saved 💾' | 'Saving...'>('Saved 💾');
   const [soundOn, setSoundOn] = useState(true);
-  const [isPlaying, setIsPlaying] = useState(false);
+  const audioRef = useRef<HTMLAudioElement | null>(null);
+  const [musicOn, setMusicOn] = useState(() => localStorage.getItem('musicOn') === 'true');
   const [loadingText, setLoadingText] = useState("");
   const [isExitingLoading, setIsExitingLoading] = useState(false);
   const [statementToDelete, setStatementToDelete] = useState<string | null>(null);
@@ -728,27 +730,53 @@ export default function App() {
     hasUserEdited.current = false;
   }, [currentUser]);
 
-  const toggleMusic = async () => {
-    const audio = document.getElementById("bg-music") as HTMLAudioElement;
-  
-    if (!audio) {
-      console.error("Audio element not found");
-      return;
-    }
-  
-    try {
-      if (isPlaying) {
-        audio.pause();
-        audio.currentTime = 0;
-        console.log("Music stopped");
-      } else {
-        await audio.play();
-        console.log("Music playing");
+  useEffect(() => {
+
+    // Single instance initialization for BGM
+    audioRef.current = new Audio("/audio/bgm.mp3");
+    audioRef.current.loop = true;
+    audioRef.current.volume = 0.2;
+    
+    return () => {
+      if (audioRef.current) {
+        audioRef.current.pause();
+        audioRef.current = null;
       }
-  
-      setIsPlaying(!isPlaying);
-    } catch (err) {
-      console.error("Playback failed:", err);
+    };
+  }, []);
+
+  useEffect(() => {
+    localStorage.setItem('musicOn', musicOn ? 'true' : 'false');
+  }, [musicOn]);
+
+  useEffect(() => {
+    if (mode !== 'viewer' && audioRef.current) {
+      audioRef.current.pause();
+      setMusicOn(false);
+    }
+  }, [mode]);
+
+  const toggleMusic = () => {
+    const audio = audioRef.current;
+    if (!audio) return;
+
+    if (musicOn) {
+      audio.pause();
+      setMusicOn(false);
+    } else {
+      audio.volume = 0;
+      audio.play().catch(() => {
+        console.log("User interaction required for BGM 🎀");
+      });
+      
+      // Safe Fade-in
+      let v = 0;
+      const fade = setInterval(() => {
+        v += 0.02;
+        if (audioRef.current) audioRef.current.volume = Math.min(v, 0.2);
+        if (v >= 0.2) clearInterval(fade);
+      }, 50);
+      setMusicOn(true);
     }
   };
 
@@ -1261,32 +1289,13 @@ export default function App() {
 
   return (
     <div className="min-h-screen relative overflow-x-hidden bg-background">
-      <audio id="bg-music" src="/audio/bgm.mp3" loop preload="auto" />
-      <button
-        onClick={toggleMusic}
-        style={{
-          position: "fixed",
-          top: 20,
-          right: 20,
-          zIndex: 9999,
-          padding: "10px 14px",
-          borderRadius: "10px",
-          backgroundColor: isPlaying ? "#fbcfe8" : "rgba(255, 255, 255, 0.8)",
-          boxShadow: "0 2px 10px rgba(0,0,0,0.05)",
-          color: "#000",
-          fontWeight: "bold",
-        }}
-      >
-        {isPlaying ? "Stop Music 🎵" : "Play Music 🎵"}
-      </button>
-
       <div className="bg-animation-layer fixed inset-0 pointer-events-none" id="bg-animation-layer" />
       <div className="relative z-10 p-4 md:p-8 pb-24 flex flex-col items-center">
         <FloatingElements />
         
         {/* Header Controls */}
-        <div className="fixed top-6 left-6 right-6 flex justify-between items-center z-[5000] pointer-events-none">
-          <div className="flex bg-white/80 backdrop-blur-sm p-1.5 rounded-full shadow-premium border border-primary/20 pointer-events-auto">
+        <div className="fixed top-6 left-6 right-6 flex justify-between items-center z-[5000]">
+          <div className="flex bg-white/80 backdrop-blur-sm p-1.5 rounded-full shadow-premium border border-primary/20">
             <Button variant="ghost" size="icon" onClick={toggleSound} className="w-10 h-10 rounded-full text-primary">
               {soundOn ? <Volume2 className="w-5 h-5" /> : <VolumeX className="w-5 h-5" />}
             </Button>
@@ -1312,6 +1321,20 @@ export default function App() {
             <Button variant="ghost" size="icon" onClick={handleLogout} className="w-10 h-10 rounded-full text-primary">
               {isAdmin ? <Users className="w-5 h-5" /> : <RotateCcw className="w-5 h-5" />}
             </Button>
+
+            {mode === 'viewer' && (
+              <Button 
+                variant="ghost" 
+                size="icon" 
+                onClick={toggleMusic} 
+                className={cn(
+                  "w-10 h-10 rounded-full transition-all duration-300",
+                  musicOn ? "text-primary bg-primary/10" : "text-muted-foreground"
+                )}
+              >
+                {musicOn ? <Volume2 className="w-5 h-5" /> : <VolumeX className="w-5 h-5" />}
+              </Button>
+            )}
           </div>
         </div>
 
@@ -1338,66 +1361,46 @@ export default function App() {
               >
                 {/* Toolbar */}
                 {builderView === 'LIST' && (
-                  <div className="flex flex-wrap items-center justify-center gap-3 px-4 py-3 bg-white/70 backdrop-blur-md rounded-2xl shadow-sm max-w-full overflow-hidden sticky top-4 z-10">
-                    
-                    {validationErrors.length > 0 && (
-                      <div className="flex items-center justify-center px-4 py-1.5 bg-accent/10 border border-accent/20 text-accent rounded-full text-[10px] font-bold uppercase tracking-widest shrink-0">
-                        {validationErrors.length} Errors ⚠️
-                      </div>
-                    )}
-
-                    <Button variant="ghost" onClick={exportConfig} className="flex items-center justify-center gap-2 px-3 py-2 text-sm rounded-xl whitespace-nowrap shrink-0 max-w-[140px] min-w-[90px] overflow-hidden text-ellipsis bg-pink-50 hover:bg-pink-100 text-muted-foreground font-bold">
-                      <Download className="w-4 h-4 shrink-0" />
-                      <span className="truncate">Export</span>
-                    </Button>
-                    
-                    <div className="relative flex items-center shrink-0">
-                      <input type="file" accept=".json" onChange={importConfig} className="absolute inset-0 opacity-0 cursor-pointer z-10 w-full h-full" />
-                      <Button variant="ghost" className="flex items-center justify-center gap-2 px-3 py-2 text-sm rounded-xl whitespace-nowrap shrink-0 max-w-[140px] min-w-[90px] overflow-hidden text-ellipsis bg-pink-50 hover:bg-pink-100 text-muted-foreground font-bold w-full">
-                        <Upload className="w-4 h-4 shrink-0" />
-                        <span className="truncate">Import</span>
-                      </Button>
-                    </div>
-
-                    <Button variant="ghost" onClick={() => setShowEntryDialog(true)} className="flex items-center justify-center gap-2 px-3 py-2 text-sm rounded-xl whitespace-nowrap shrink-0 max-w-[140px] min-w-[90px] overflow-hidden text-ellipsis bg-pink-50 hover:bg-pink-100 text-muted-foreground font-bold">
-                      <Sparkles className="w-4 h-4 shrink-0" />
-                      <span className="truncate">Intro</span>
-                    </Button>
-
-                    <Button variant="ghost" onClick={() => setShowEndingModal(true)} className="flex items-center justify-center gap-2 px-3 py-2 text-sm rounded-xl whitespace-nowrap shrink-0 max-w-[140px] min-w-[90px] overflow-hidden text-ellipsis bg-pink-50 hover:bg-pink-100 text-muted-foreground font-bold">
-                      <Heart className="w-4 h-4 shrink-0" />
-                      <span className="truncate">Endings</span>
-                    </Button>
-
-                    {saveStatus && (
-                      <div className="flex items-center justify-center gap-2 px-3 py-1.5 rounded-full bg-secondary/10 border border-secondary/20 shrink-0">
-                        <span className={cn(
-                          "text-[10px] font-bold uppercase tracking-widest transition-colors",
-                          saveStatus === 'Saving...' ? "text-accent animate-pulse" : "text-highlight"
-                        )}>
-                          {saveStatus}
+                  <div className="bg-white/90 backdrop-blur-md p-5 rounded-[32px] shadow-soft sticky top-4 z-10 border border-white/50 space-y-4">
+                    <div className="flex items-center justify-between">
+                      <div className={cn(
+                        "flex items-center gap-2 px-4 py-1.5 rounded-full border",
+                        validationErrors.length > 0 ? "bg-accent/5 border-accent/20 text-accent" : "bg-highlight/5 border-highlight/20 text-highlight"
+                      )}>
+                        <span className="text-[10px] font-bold uppercase tracking-widest">
+                          {validationErrors.length > 0 ? `${validationErrors.length} Errors 💔` : 'Ready 💖'}
                         </span>
                       </div>
-                    )}
-
-                    <Button 
-                      onClick={() => {
-                          if (validationErrors.length > 0) {
-                              setShowErrorDialog(true);
-                              setErrorMessage(`${validationErrors.length} errors found.`);
-                          } else {
-                              startViewer();
-                          }
-                      }} 
-                      className={cn(
-                        "flex items-center justify-center gap-2 px-3 py-2 text-sm rounded-xl whitespace-nowrap shrink-0 max-w-[140px] min-w-[90px] overflow-hidden text-ellipsis font-bold border-none",
-                        validationErrors.length > 0 ? "bg-accent text-white hover:bg-accent/90" : "bg-premium-gradient text-white hover:opacity-90"
-                      )}
-                    >
-                      <span className="truncate">
-                         {validationErrors.length > 0 ? `Errors (${validationErrors.length})` : 'Finish ▶'}
-                      </span>
-                    </Button>
+                      
+                      {(() => {
+                        const realErrors = validationErrors.filter(e => e.type !== 'warning');
+                        return (
+                          <Button 
+                            onClick={() => {
+                                if (realErrors.length > 0) {
+                                    setShowErrorDialog(true);
+                                    setErrorMessage(`${realErrors.length} errors found.`);
+                                } else {
+                                    startViewer();
+                                }
+                            }} 
+                            className={cn(
+                              "pill-button font-bold text-sm px-6 h-10",
+                              realErrors.length > 0 ? "bg-accent text-white" : "bg-premium-gradient"
+                            )}
+                          >
+                              {realErrors.length > 0 ? `Errors ⚠️ (${realErrors.length})` : 'Finish & Run ▶'}
+                          </Button>
+                        );
+                      })()}
+                    </div>
+                    <BuilderTopPanel 
+                      onExport={exportConfig}
+                      onImport={importConfig}
+                      onOpenIntro={() => setShowEntryDialog(true)}
+                      onOpenEndings={() => setShowEndingModal(true)}
+                      saveStatus={saveStatus}
+                    />
                   </div>
                 )}
 
@@ -1419,10 +1422,7 @@ export default function App() {
                                 <Textarea 
                                   value={statement.text}
                                   onChange={(e) => updateStatement(statement.id, { text: e.target.value })}
-                                  className={cn(
-                                    "stitched-input min-h-[100px] text-lg font-bold",
-                                    (!statement.text || statement.text.trim() === "") && "border-red-400 focus-visible:ring-red-400 border-2"
-                                  )}
+                                  className="stitched-input min-h-[100px] text-lg font-bold"
                                   placeholder="Question text..."
                                 />
                                 <div className="space-y-4">
@@ -1432,10 +1432,7 @@ export default function App() {
                                         <Input 
                                           value={opt.text} 
                                           onChange={(e) => updateOption(statement.id, opt.id, { text: e.target.value })}
-                                          className={cn(
-                                            "flex-grow font-semibold",
-                                            (!opt.text || opt.text.trim() === "") && "border-red-400 focus-visible:ring-red-400 border-2"
-                                          )}
+                                          className="flex-grow font-semibold"
                                           placeholder="Option text..."
                                         />
                                         <Button variant="ghost" size="icon" onClick={() => deleteOption(statement.id, opt.id)} disabled={statement.options.length <= 2} className="text-accent hover:bg-accent/10"><Trash2 className="w-4 h-4" /></Button>
@@ -1635,7 +1632,7 @@ export default function App() {
             {validationErrors.map((err, i) => (
                <div 
                  key={i} 
-                 className={`p-3 rounded-xl border cursor-pointer hover:opacity-80 transition-all flex items-center justify-between bg-accent/10 border-accent/20`}
+                 className={`p-3 rounded-xl border cursor-pointer hover:opacity-80 transition-all flex items-center justify-between ${err.type === 'warning' ? 'bg-primary/10 border-primary/20' : 'bg-accent/10 border-accent/20'}`}
                  onClick={() => {
                    setShowErrorDialog(false);
                    setHighlightedErrorId(err.statementId);
@@ -1647,10 +1644,10 @@ export default function App() {
                    }
                  }}
                >
-                 <span className={`text-sm font-semibold text-accent`}>
-                    {err.message}
+                 <span className={`text-sm font-semibold ${err.type === 'warning' ? 'text-text-dark' : 'text-accent'}`}>
+                    {err.type === 'warning' ? '⚠ ' : ''}{err.message}
                  </span>
-                 <span className={`text-xs font-bold px-2 py-1 rounded-full uppercase bg-accent/20 text-accent`}>
+                 <span className={`text-xs font-bold px-2 py-1 rounded-full uppercase ${err.type === 'warning' ? 'bg-primary/20 text-text-dark' : 'bg-accent/20 text-accent'}`}>
                     Q{(statements ?? []).findIndex(s => s.id === err.statementId) + 1}
                  </span>
                </div>
