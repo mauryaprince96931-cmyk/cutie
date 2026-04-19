@@ -61,7 +61,7 @@ import { onAuthStateChanged } from 'firebase/auth';
 import { auth, isConfigValid, db } from '@/lib/firebase';
 import { fetchUserData, createUserData, deleteUserData, saveUserDataDebounced, fetchAllUsers } from '@/lib/db';
 import { doc, onSnapshot } from 'firebase/firestore';
-import { loadSoundPreference, setSoundEnabled, playSound, initAudio } from './lib/sound';
+import { loadSoundPreference, setSoundEnabled, playSound, initAudio, unlockAudio, startMusic, stopMusic } from './lib/sound';
 
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -603,6 +603,7 @@ export default function App() {
   const [saveStatus, setSaveStatus] = useState<'Saved 💾' | 'Saving...'>('Saved 💾');
   const [soundOn, setSoundOn] = useState(true);
   const audioRef = useRef<HTMLAudioElement | null>(null);
+  const [isMusicOn, setIsMusicOn] = useState(false);
   const [loadingText, setLoadingText] = useState("");
   const [isExitingLoading, setIsExitingLoading] = useState(false);
   const [statementToDelete, setStatementToDelete] = useState<string | null>(null);
@@ -728,41 +729,36 @@ export default function App() {
     hasUserEdited.current = false;
   }, [currentUser]);
 
-  // Continuous BGM Loop
   useEffect(() => {
-    const bgm = new Audio("/audio/bgm.mp3");
-    bgm.loop = true;
-    bgm.volume = 0.2;
-    audioRef.current = bgm;
-    
-    // Play the audio
-    const playAudio = () => {
-      if (bgm.paused) {
-        bgm.play().catch((e) => {
-          console.log("Waiting for interaction to play BGM", e);
-        });
-      }
-    };
-
-    // Try playing immediately
-    playAudio();
-
-    // Browsers require interaction before playing audio, so add global listeners
-    const events = ['click', 'touchstart', 'keydown'];
-    const handleInteraction = () => {
-      playAudio();
-      // Remove listeners once interacting starts playback successfully
-      events.forEach(e => document.removeEventListener(e, handleInteraction));
-    };
-
-    events.forEach(e => document.addEventListener(e, handleInteraction));
-
-    return () => {
-      bgm.pause();
-      events.forEach(e => document.removeEventListener(e, handleInteraction));
-      audioRef.current = null;
-    };
+    const unlock = () => unlockAudio();
+    window.addEventListener("click", unlock, { once: true });
+    return () => window.removeEventListener("click", unlock);
   }, []);
+
+  useEffect(() => {
+    localStorage.setItem("bgMusic", JSON.stringify(isMusicOn));
+  }, [isMusicOn]);
+
+  useEffect(() => {
+    const saved = JSON.parse(localStorage.getItem("bgMusic") || "false");
+    setIsMusicOn(saved);
+  }, []);
+
+  const toggleMusic = async () => {
+    console.log("BUTTON CLICKED");
+    await unlockAudio();
+  
+    try {
+      if (isMusicOn) {
+        stopMusic();
+      } else {
+        await startMusic();
+      }
+      setIsMusicOn(!isMusicOn);
+    } catch (err) {
+      console.error("Music play blocked:", err);
+    }
+  };
 
   // Auth Handlers
   const handleCreateUser = async (name: string, pass: string) => {
@@ -1305,6 +1301,17 @@ export default function App() {
             <Button variant="ghost" size="icon" onClick={handleLogout} className="w-10 h-10 rounded-full text-primary">
               {isAdmin ? <Users className="w-5 h-5" /> : <RotateCcw className="w-5 h-5" />}
             </Button>
+
+            <button
+              onClick={toggleMusic}
+              className={cn(
+                "w-10 h-10 rounded-full flex items-center justify-center transition-all duration-300",
+                isMusicOn ? "text-primary bg-primary/10" : "text-muted-foreground hover:bg-black/5"
+              )}
+              title={isMusicOn ? "Stop music 🎵" : "Play music 🎵"}
+            >
+              🎵
+            </button>
           </div>
         </div>
 
