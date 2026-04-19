@@ -1271,17 +1271,7 @@ export default function App() {
             </Button>
 
             {mode === 'viewer' && (
-              <Button 
-                variant="ghost" 
-                size="icon" 
-                onClick={toggleMusic} 
-                className={cn(
-                  "w-10 h-10 rounded-full transition-all duration-300",
-                  musicOn ? "text-primary bg-primary/10" : "text-muted-foreground"
-                )}
-              >
-                {musicOn ? <Volume2 className="w-5 h-5" /> : <VolumeX className="w-5 h-5" />}
-              </Button>
+              <></>
             )}
           </div>
         </div>
