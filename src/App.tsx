@@ -61,7 +61,7 @@ import { onAuthStateChanged } from 'firebase/auth';
 import { auth, isConfigValid, db } from '@/lib/firebase';
 import { fetchUserData, createUserData, deleteUserData, saveUserDataDebounced, fetchAllUsers } from '@/lib/db';
 import { doc, onSnapshot } from 'firebase/firestore';
-import { loadSoundPreference, setSoundEnabled, playSound, initAudio, unlockAudio, startMusic, stopMusic } from './lib/sound';
+import { loadSoundPreference, setSoundEnabled, playSound, initAudio } from './lib/sound';
 
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -602,8 +602,7 @@ export default function App() {
   const [showErrorDialog, setShowErrorDialog] = useState(false);
   const [saveStatus, setSaveStatus] = useState<'Saved 💾' | 'Saving...'>('Saved 💾');
   const [soundOn, setSoundOn] = useState(true);
-  const audioRef = useRef<HTMLAudioElement | null>(null);
-  const [isMusicOn, setIsMusicOn] = useState(false);
+  const [isPlaying, setIsPlaying] = useState(false);
   const [loadingText, setLoadingText] = useState("");
   const [isExitingLoading, setIsExitingLoading] = useState(false);
   const [statementToDelete, setStatementToDelete] = useState<string | null>(null);
@@ -729,34 +728,27 @@ export default function App() {
     hasUserEdited.current = false;
   }, [currentUser]);
 
-  useEffect(() => {
-    const unlock = () => unlockAudio();
-    window.addEventListener("click", unlock, { once: true });
-    return () => window.removeEventListener("click", unlock);
-  }, []);
-
-  useEffect(() => {
-    localStorage.setItem("bgMusic", JSON.stringify(isMusicOn));
-  }, [isMusicOn]);
-
-  useEffect(() => {
-    const saved = JSON.parse(localStorage.getItem("bgMusic") || "false");
-    setIsMusicOn(saved);
-  }, []);
-
   const toggleMusic = async () => {
-    console.log("BUTTON CLICKED");
-    await unlockAudio();
+    const audio = document.getElementById("bg-music") as HTMLAudioElement;
+  
+    if (!audio) {
+      console.error("Audio element not found");
+      return;
+    }
   
     try {
-      if (isMusicOn) {
-        stopMusic();
+      if (isPlaying) {
+        audio.pause();
+        audio.currentTime = 0;
+        console.log("Music stopped");
       } else {
-        await startMusic();
+        await audio.play();
+        console.log("Music playing");
       }
-      setIsMusicOn(!isMusicOn);
+  
+      setIsPlaying(!isPlaying);
     } catch (err) {
-      console.error("Music play blocked:", err);
+      console.error("Playback failed:", err);
     }
   };
 
@@ -1269,13 +1261,32 @@ export default function App() {
 
   return (
     <div className="min-h-screen relative overflow-x-hidden bg-background">
+      <audio id="bg-music" src="/audio/bgm.mp3" loop preload="auto" />
+      <button
+        onClick={toggleMusic}
+        style={{
+          position: "fixed",
+          top: 20,
+          right: 20,
+          zIndex: 9999,
+          padding: "10px 14px",
+          borderRadius: "10px",
+          backgroundColor: isPlaying ? "#fbcfe8" : "rgba(255, 255, 255, 0.8)",
+          boxShadow: "0 2px 10px rgba(0,0,0,0.05)",
+          color: "#000",
+          fontWeight: "bold",
+        }}
+      >
+        {isPlaying ? "Stop Music 🎵" : "Play Music 🎵"}
+      </button>
+
       <div className="bg-animation-layer fixed inset-0 pointer-events-none" id="bg-animation-layer" />
       <div className="relative z-10 p-4 md:p-8 pb-24 flex flex-col items-center">
         <FloatingElements />
         
         {/* Header Controls */}
-        <div className="fixed top-6 left-6 right-6 flex justify-between items-center z-[5000]">
-          <div className="flex bg-white/80 backdrop-blur-sm p-1.5 rounded-full shadow-premium border border-primary/20">
+        <div className="fixed top-6 left-6 right-6 flex justify-between items-center z-[5000] pointer-events-none">
+          <div className="flex bg-white/80 backdrop-blur-sm p-1.5 rounded-full shadow-premium border border-primary/20 pointer-events-auto">
             <Button variant="ghost" size="icon" onClick={toggleSound} className="w-10 h-10 rounded-full text-primary">
               {soundOn ? <Volume2 className="w-5 h-5" /> : <VolumeX className="w-5 h-5" />}
             </Button>
@@ -1301,17 +1312,6 @@ export default function App() {
             <Button variant="ghost" size="icon" onClick={handleLogout} className="w-10 h-10 rounded-full text-primary">
               {isAdmin ? <Users className="w-5 h-5" /> : <RotateCcw className="w-5 h-5" />}
             </Button>
-
-            <button
-              onClick={toggleMusic}
-              className={cn(
-                "w-10 h-10 rounded-full flex items-center justify-center transition-all duration-300",
-                isMusicOn ? "text-primary bg-primary/10" : "text-muted-foreground hover:bg-black/5"
-              )}
-              title={isMusicOn ? "Stop music 🎵" : "Play music 🎵"}
-            >
-              🎵
-            </button>
           </div>
         </div>
 
