@@ -86,7 +86,6 @@ import {
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { cn } from '@/lib/utils';
 import { useAppContext, AppMode } from './store/AppContext';
-import { BuilderTopPanel } from './components/Builder/BuilderTopPanel';
 import { getErrors } from '@/lib/validation';
 import { ValidationError, User, Statement, Ending, Option, EntryMessage } from './types';
 
@@ -227,7 +226,7 @@ const FlowView = ({ statements, validationErrors, onEditNode }: FlowViewProps) =
   useEffect(() => {
     const newPositions = { ...positions };
     let changed = false;
-    (statements || []).forEach((s, i) => {
+    (statements ?? []).forEach((s, i) => {
       if (!newPositions[s.id]) {
         newPositions[s.id] = { 
           x: 150 + (i % 3) * 350, 
@@ -413,7 +412,7 @@ const FlowView = ({ statements, validationErrors, onEditNode }: FlowViewProps) =
               </marker>
             </defs>
             <AnimatePresence>
-              {(statements || []).map(s => s.options.map(opt => {
+              {(statements ?? []).map(s => s.options.map(opt => {
                 if (!opt.nextId) return null;
                 const from = positions[s.id];
                 const to = positions[opt.nextId];
@@ -451,7 +450,7 @@ const FlowView = ({ statements, validationErrors, onEditNode }: FlowViewProps) =
           </svg>
 
           <AnimatePresence>
-            {(statements || []).map((s, i) => {
+            {(statements ?? []).map((s, i) => {
               const hasNodeError = validationErrors.some(e => e.statementId === s.id);
               return (
                 <motion.div
@@ -604,12 +603,24 @@ export default function App() {
   const [saveStatus, setSaveStatus] = useState<'Saved 💾' | 'Saving...'>('Saved 💾');
   const [soundOn, setSoundOn] = useState(true);
   const audioRef = useRef<HTMLAudioElement | null>(null);
-  const [musicOn, setMusicOn] = useState(() => localStorage.getItem('musicOn') === 'true');
   const [loadingText, setLoadingText] = useState("");
   const [isExitingLoading, setIsExitingLoading] = useState(false);
   const [statementToDelete, setStatementToDelete] = useState<string | null>(null);
   const isDeletingRef = useRef(false);
   const hasUserEdited = useRef(false);
+
+  // Persistence Sync
+  useEffect(() => {
+    if (!currentUser || mode !== 'builder') return;
+    if (!hasUserEdited.current) return;
+
+    saveUserDataDebounced(currentUser.id, {
+      statements: statements ?? DEFAULT_STATEMENTS,
+      endings: endings ?? [],
+      fallbackEnding: ending ?? { title: "You chose love 💖", subtitle: "I knew you would… 🥺" },
+      entryMessage: entryMessage ?? { title: "Hey cutie 💖", subtitle: "I made something for you… 🥺" }
+    });
+  }, [statements, endings, ending, entryMessage, currentUser, mode]);
 
   // Fetch Users for Admin Panel
   useEffect(() => {
@@ -663,6 +674,7 @@ export default function App() {
                     setCurrentUser(userData);
                     setStatements(userData.data?.statements ?? DEFAULT_STATEMENTS);
                     setEndings(userData.data?.endings ?? []);
+                    setEnding(userData.data?.fallbackEnding ?? { title: "You chose love 💖", subtitle: "I knew you would… 🥺" });
                     setEntryMessage(userData.data?.entryMessage ?? { title: "Hey cutie 💖", subtitle: "I made something for you… 🥺" });
                     setDataLoaded(true);
                     
@@ -680,13 +692,14 @@ export default function App() {
 
                   const data = docSnap.data();
 
-                  console.log("REALTIME UPDATE:", data);
+                  console.log("LOAD:", data.data);
 
                   // CRITICAL: DO NOT overwrite active edits
                   if (hasUserEdited.current) return;
 
                   setStatements(data.data?.statements ?? DEFAULT_STATEMENTS);
                   setEndings(data.data?.endings ?? []);
+                  setEnding(data.data?.fallbackEnding ?? { title: "You chose love 💖", subtitle: "I knew you would… 🥺" });
                   setEntryMessage(data.data?.entryMessage ?? { title: "Hey cutie 💖", subtitle: "I made something for you… 🥺" });
                 });
 
@@ -715,55 +728,41 @@ export default function App() {
     hasUserEdited.current = false;
   }, [currentUser]);
 
+  // Continuous BGM Loop
   useEffect(() => {
-
-    // Single instance initialization for BGM
-    audioRef.current = new Audio("/audio/bgm.mp3");
-    audioRef.current.loop = true;
-    audioRef.current.volume = 0.2;
+    const bgm = new Audio("/audio/bgm.mp3");
+    bgm.loop = true;
+    bgm.volume = 0.2;
+    audioRef.current = bgm;
     
-    return () => {
-      if (audioRef.current) {
-        audioRef.current.pause();
-        audioRef.current = null;
+    // Play the audio
+    const playAudio = () => {
+      if (bgm.paused) {
+        bgm.play().catch((e) => {
+          console.log("Waiting for interaction to play BGM", e);
+        });
       }
     };
+
+    // Try playing immediately
+    playAudio();
+
+    // Browsers require interaction before playing audio, so add global listeners
+    const events = ['click', 'touchstart', 'keydown'];
+    const handleInteraction = () => {
+      playAudio();
+      // Remove listeners once interacting starts playback successfully
+      events.forEach(e => document.removeEventListener(e, handleInteraction));
+    };
+
+    events.forEach(e => document.addEventListener(e, handleInteraction));
+
+    return () => {
+      bgm.pause();
+      events.forEach(e => document.removeEventListener(e, handleInteraction));
+      audioRef.current = null;
+    };
   }, []);
-
-  useEffect(() => {
-    localStorage.setItem('musicOn', musicOn ? 'true' : 'false');
-  }, [musicOn]);
-
-  useEffect(() => {
-    if (mode !== 'viewer' && audioRef.current) {
-      audioRef.current.pause();
-      setMusicOn(false);
-    }
-  }, [mode]);
-
-  const toggleMusic = () => {
-    const audio = audioRef.current;
-    if (!audio) return;
-
-    if (musicOn) {
-      audio.pause();
-      setMusicOn(false);
-    } else {
-      audio.volume = 0;
-      audio.play().catch(() => {
-        console.log("User interaction required for BGM 🎀");
-      });
-      
-      // Safe Fade-in
-      let v = 0;
-      const fade = setInterval(() => {
-        v += 0.02;
-        if (audioRef.current) audioRef.current.volume = Math.min(v, 0.2);
-        if (v >= 0.2) clearInterval(fade);
-      }, 50);
-      setMusicOn(true);
-    }
-  };
 
   // Auth Handlers
   const handleCreateUser = async (name: string, pass: string) => {
@@ -775,6 +774,7 @@ export default function App() {
       data: {
         statements: DEFAULT_STATEMENTS,
         endings: [],
+        fallbackEnding: { title: "You chose love 💖", subtitle: "I knew you would… 🥺" },
         entryMessage: { title: "Hey cutie 💖", subtitle: "I made something for you… 🥺" }
       }
     };
@@ -795,9 +795,11 @@ export default function App() {
   };
 
   const handleUserLogin = (user: User) => {
+    hasUserEdited.current = false;
     setCurrentUser(user);
     setStatements(user.data?.statements ?? DEFAULT_STATEMENTS);
     setEndings(user.data?.endings ?? []);
+    setEnding(user.data?.fallbackEnding ?? { title: "You chose love 💖", subtitle: "I knew you would… 🥺" });
     setEntryMessage(user.data?.entryMessage ?? { title: "Hey cutie 💖", subtitle: "I made something for you… 🥺" });
     setDataLoaded(true);
     setMode('loading');
@@ -808,6 +810,7 @@ export default function App() {
     setCurrentUser(user);
     setStatements(user.data?.statements ?? DEFAULT_STATEMENTS);
     setEndings(user.data?.endings ?? []);
+    setEnding(user.data?.fallbackEnding ?? { title: "You chose love 💖", subtitle: "I knew you would… 🥺" });
     setEntryMessage(
       user.data?.entryMessage ?? {
         title: "Hey cutie 💖",
@@ -881,13 +884,6 @@ export default function App() {
   }, [mode, isAdmin]);
 
   useEffect(() => {
-    if (currentUser && mode === 'builder' && isReady && dataLoaded && statements && endings && entryMessage) {
-        if (!hasUserEdited.current) return;
-        saveUserDataDebounced(currentUser.id, { statements, endings, entryMessage });
-    }
-  }, [statements, endings, entryMessage, currentUser, mode, isReady, dataLoaded]);
-
-  useEffect(() => {
     setEndingActive(currentStatementId === 'END');
   }, [currentStatementId]);
 
@@ -908,7 +904,7 @@ export default function App() {
 
   const [highlightedErrorId, setHighlightedErrorId] = useState<string | null>(null);
 
-  const validationErrors = useMemo(() => getErrors(statements || []), [statements]);
+  const validationErrors = useMemo(() => getErrors(statements ?? []), [statements]);
 
   useEffect(() => {
     if (highlightedErrorId) {
@@ -950,22 +946,25 @@ export default function App() {
         }
       ]
     };
-    setStatements([...statements, newStatement]);
+    const updated = [...(statements ?? []), newStatement];
+    setStatements(updated);
   };
 
   const deleteStatement = (id: string) => {
     hasUserEdited.current = true;
-    setStatements(prev => (prev || []).filter(s => s.id !== id));
+    const updated = (statements ?? []).filter(s => s.id !== id);
+    setStatements(updated);
   };
 
   const updateStatement = (id: string, updates: Partial<Statement>) => {
     hasUserEdited.current = true;
-    setStatements(prev => (prev || []).map(s => s.id === id ? { ...s, ...updates } : s));
+    const updated = (statements ?? []).map(s => s.id === id ? { ...s, ...updates } : s);
+    setStatements(updated);
   };
 
   const updateOption = (statementId: string, optionId: string, updates: Partial<Option>) => {
     hasUserEdited.current = true;
-    setStatements(prev => (prev || []).map(s => {
+    const updated = (statements ?? []).map(s => {
       if (s.id === statementId) {
         return {
           ...s,
@@ -973,12 +972,13 @@ export default function App() {
         };
       }
       return s;
-    }));
+    });
+    setStatements(updated);
   };
 
   const addOption = (statementId: string) => {
     hasUserEdited.current = true;
-    setStatements(prev => (prev || []).map(s => {
+    const updated = (statements ?? []).map(s => {
       if (s.id === statementId) {
         const newOption: Option = {
           id: Math.random().toString(36).substr(2, 9),
@@ -993,12 +993,13 @@ export default function App() {
         };
       }
       return s;
-    }));
+    });
+    setStatements(updated);
   };
 
   const deleteOption = (statementId: string, optionId: string) => {
     hasUserEdited.current = true;
-    setStatements(prev => (prev || []).map(s => {
+    const updated = (statements ?? []).map(s => {
       if (s.id === statementId) {
         if (s.options.length <= 2) return s;
         return {
@@ -1007,7 +1008,8 @@ export default function App() {
         };
       }
       return s;
-    }));
+    });
+    setStatements(updated);
   };
 
   const handleDragEnd = (event: DragEndEvent) => {
@@ -1015,9 +1017,10 @@ export default function App() {
     if (over && active.id !== over.id) {
       hasUserEdited.current = true;
       setStatements((items) => {
-        const oldIndex = items.findIndex((i) => i.id === active.id);
-        const newIndex = items.findIndex((i) => i.id === over.id);
-        return arrayMove(items, oldIndex, newIndex);
+        const oldIndex = (items ?? []).findIndex((i) => i.id === active.id);
+        const newIndex = (items ?? []).findIndex((i) => i.id === over.id);
+        const updated = arrayMove(items ?? [], oldIndex, newIndex);
+        return updated;
       });
     }
   };
@@ -1078,7 +1081,7 @@ export default function App() {
     if (option.isCorrect) {
       if (x !== undefined && y !== undefined) createRipple(x, y);
       if (option.endingId || option.ending || !option.nextId) {
-        const endData = (option.endingId ? endings?.find(e => e.id === option.endingId) : option.ending) || ending;
+        const endData = (option.endingId ? endings?.find(e => e.id === option.endingId) : option.ending) ?? ending;
         setCurrentEndingDisplay(endData);
         setTimeout(() => {
           setEndingActive(true);
@@ -1090,13 +1093,13 @@ export default function App() {
         playSound('correct');
       }
     } else {
-      setWrongMessage(option.wrongMessage || WRONG_MESSAGES[Math.floor(Math.random() * WRONG_MESSAGES.length)]);
+      setWrongMessage(option.wrongMessage ?? WRONG_MESSAGES[Math.floor(Math.random() * WRONG_MESSAGES.length)]);
       setShowWrongPopup(true);
       playSound('wrong');
     }
   };
 
-  const currentStatement = (statements || []).find(s => s.id === currentStatementId) || (statements || [])[0];
+  const currentStatement = (statements ?? []).find(s => s.id === currentStatementId) ?? (statements ?? [])[0];
 
   // Screen Returns
   if (!isConfigValid) {
@@ -1302,20 +1305,6 @@ export default function App() {
             <Button variant="ghost" size="icon" onClick={handleLogout} className="w-10 h-10 rounded-full text-primary">
               {isAdmin ? <Users className="w-5 h-5" /> : <RotateCcw className="w-5 h-5" />}
             </Button>
-
-            {mode === 'viewer' && (
-              <Button 
-                variant="ghost" 
-                size="icon" 
-                onClick={toggleMusic} 
-                className={cn(
-                  "w-10 h-10 rounded-full transition-all duration-300",
-                  musicOn ? "text-primary bg-primary/10" : "text-muted-foreground"
-                )}
-              >
-                {musicOn ? <Volume2 className="w-5 h-5" /> : <VolumeX className="w-5 h-5" />}
-              </Button>
-            )}
           </div>
         </div>
 
@@ -1342,53 +1331,74 @@ export default function App() {
               >
                 {/* Toolbar */}
                 {builderView === 'LIST' && (
-                  <div className="bg-white/90 backdrop-blur-md p-5 rounded-[32px] shadow-soft sticky top-4 z-10 border border-white/50 space-y-4">
-                    <div className="flex items-center justify-between">
-                      <div className={cn(
-                        "flex items-center gap-2 px-4 py-1.5 rounded-full border",
-                        validationErrors.length > 0 ? "bg-accent/5 border-accent/20 text-accent" : "bg-highlight/5 border-highlight/20 text-highlight"
-                      )}>
-                        <span className="text-[10px] font-bold uppercase tracking-widest">
-                          {validationErrors.length > 0 ? `${validationErrors.length} Errors 💔` : 'Ready 💖'}
+                  <div className="flex flex-wrap items-center justify-center gap-3 px-4 py-3 bg-white/70 backdrop-blur-md rounded-2xl shadow-sm max-w-full overflow-hidden sticky top-4 z-10">
+                    
+                    {validationErrors.length > 0 && (
+                      <div className="flex items-center justify-center px-4 py-1.5 bg-accent/10 border border-accent/20 text-accent rounded-full text-[10px] font-bold uppercase tracking-widest shrink-0">
+                        {validationErrors.length} Errors ⚠️
+                      </div>
+                    )}
+
+                    <Button variant="ghost" onClick={exportConfig} className="flex items-center justify-center gap-2 px-3 py-2 text-sm rounded-xl whitespace-nowrap shrink-0 max-w-[140px] min-w-[90px] overflow-hidden text-ellipsis bg-pink-50 hover:bg-pink-100 text-muted-foreground font-bold">
+                      <Download className="w-4 h-4 shrink-0" />
+                      <span className="truncate">Export</span>
+                    </Button>
+                    
+                    <div className="relative flex items-center shrink-0">
+                      <input type="file" accept=".json" onChange={importConfig} className="absolute inset-0 opacity-0 cursor-pointer z-10 w-full h-full" />
+                      <Button variant="ghost" className="flex items-center justify-center gap-2 px-3 py-2 text-sm rounded-xl whitespace-nowrap shrink-0 max-w-[140px] min-w-[90px] overflow-hidden text-ellipsis bg-pink-50 hover:bg-pink-100 text-muted-foreground font-bold w-full">
+                        <Upload className="w-4 h-4 shrink-0" />
+                        <span className="truncate">Import</span>
+                      </Button>
+                    </div>
+
+                    <Button variant="ghost" onClick={() => setShowEntryDialog(true)} className="flex items-center justify-center gap-2 px-3 py-2 text-sm rounded-xl whitespace-nowrap shrink-0 max-w-[140px] min-w-[90px] overflow-hidden text-ellipsis bg-pink-50 hover:bg-pink-100 text-muted-foreground font-bold">
+                      <Sparkles className="w-4 h-4 shrink-0" />
+                      <span className="truncate">Intro</span>
+                    </Button>
+
+                    <Button variant="ghost" onClick={() => setShowEndingModal(true)} className="flex items-center justify-center gap-2 px-3 py-2 text-sm rounded-xl whitespace-nowrap shrink-0 max-w-[140px] min-w-[90px] overflow-hidden text-ellipsis bg-pink-50 hover:bg-pink-100 text-muted-foreground font-bold">
+                      <Heart className="w-4 h-4 shrink-0" />
+                      <span className="truncate">Endings</span>
+                    </Button>
+
+                    {saveStatus && (
+                      <div className="flex items-center justify-center gap-2 px-3 py-1.5 rounded-full bg-secondary/10 border border-secondary/20 shrink-0">
+                        <span className={cn(
+                          "text-[10px] font-bold uppercase tracking-widest transition-colors",
+                          saveStatus === 'Saving...' ? "text-accent animate-pulse" : "text-highlight"
+                        )}>
+                          {saveStatus}
                         </span>
                       </div>
-                      
-                      {(() => {
-                        const realErrors = validationErrors.filter(e => e.type !== 'warning');
-                        return (
-                          <Button 
-                            onClick={() => {
-                                if (realErrors.length > 0) {
-                                    setShowErrorDialog(true);
-                                    setErrorMessage(`${realErrors.length} errors found.`);
-                                } else {
-                                    startViewer();
-                                }
-                            }} 
-                            className={cn(
-                              "pill-button font-bold text-sm px-6 h-10",
-                              realErrors.length > 0 ? "bg-accent text-white" : "bg-premium-gradient"
-                            )}
-                          >
-                              {realErrors.length > 0 ? `Errors ⚠️ (${realErrors.length})` : 'Finish & Run ▶'}
-                          </Button>
-                        );
-                      })()}
-                    </div>
-                    <BuilderTopPanel 
-                      onExport={exportConfig}
-                      onImport={importConfig}
-                      onOpenIntro={() => setShowEntryDialog(true)}
-                      onOpenEndings={() => setShowEndingModal(true)}
-                    />
+                    )}
+
+                    <Button 
+                      onClick={() => {
+                          if (validationErrors.length > 0) {
+                              setShowErrorDialog(true);
+                              setErrorMessage(`${validationErrors.length} errors found.`);
+                          } else {
+                              startViewer();
+                          }
+                      }} 
+                      className={cn(
+                        "flex items-center justify-center gap-2 px-3 py-2 text-sm rounded-xl whitespace-nowrap shrink-0 max-w-[140px] min-w-[90px] overflow-hidden text-ellipsis font-bold border-none",
+                        validationErrors.length > 0 ? "bg-accent text-white hover:bg-accent/90" : "bg-premium-gradient text-white hover:opacity-90"
+                      )}
+                    >
+                      <span className="truncate">
+                         {validationErrors.length > 0 ? `Errors (${validationErrors.length})` : 'Finish ▶'}
+                      </span>
+                    </Button>
                   </div>
                 )}
 
                 {builderView === 'LIST' ? (
                   <div className="space-y-6 pb-20">
                     <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
-                      <SortableContext items={(statements || []).map(s => s.id)} strategy={verticalListSortingStrategy}>
-                        {(statements || []).map((statement, index) => (
+                      <SortableContext items={(statements ?? []).map(s => s.id)} strategy={verticalListSortingStrategy}>
+                        {(statements ?? []).map((statement, index) => (
                           <SortableItem key={statement.id} id={statement.id}>
                             <Card className="scrapbook-card relative overflow-hidden" id={`statement-${statement.id}`}>
                               <CardHeader className="pb-4 flex flex-row items-center justify-between space-y-0">
@@ -1402,7 +1412,10 @@ export default function App() {
                                 <Textarea 
                                   value={statement.text}
                                   onChange={(e) => updateStatement(statement.id, { text: e.target.value })}
-                                  className="stitched-input min-h-[100px] text-lg font-bold"
+                                  className={cn(
+                                    "stitched-input min-h-[100px] text-lg font-bold",
+                                    (!statement.text || statement.text.trim() === "") && "border-red-400 focus-visible:ring-red-400 border-2"
+                                  )}
                                   placeholder="Question text..."
                                 />
                                 <div className="space-y-4">
@@ -1412,7 +1425,10 @@ export default function App() {
                                         <Input 
                                           value={opt.text} 
                                           onChange={(e) => updateOption(statement.id, opt.id, { text: e.target.value })}
-                                          className="flex-grow font-semibold"
+                                          className={cn(
+                                            "flex-grow font-semibold",
+                                            (!opt.text || opt.text.trim() === "") && "border-red-400 focus-visible:ring-red-400 border-2"
+                                          )}
                                           placeholder="Option text..."
                                         />
                                         <Button variant="ghost" size="icon" onClick={() => deleteOption(statement.id, opt.id)} disabled={statement.options.length <= 2} className="text-accent hover:bg-accent/10"><Trash2 className="w-4 h-4" /></Button>
@@ -1437,16 +1453,16 @@ export default function App() {
                                               <SelectTrigger className="h-8"><SelectValue placeholder="Next Step" /></SelectTrigger>
                                               <SelectContent className="z-[9999]">
                                                 <SelectItem value="END">Ending 🏁</SelectItem>
-                                                {(statements || []).filter(s => s.id !== statement.id).map((s, i) => (
+                                                {(statements ?? []).filter(s => s.id !== statement.id).map((s, i) => (
                                                   <SelectItem key={s.id} value={s.id}>
-                                                    Next #{(statements || []).indexOf(s) + 1}
+                                                    Next #{(statements ?? []).indexOf(s) + 1}
                                                   </SelectItem>
                                                 ))}
                                               </SelectContent>
                                             </Select>
 
                                             {/* Specific Ending Selector */}
-                                            {!opt.nextId && (endings || []).length > 0 && (
+                                            {!opt.nextId && (endings ?? []).length > 0 && (
                                               <Select 
                                                 value={opt.endingId || 'GLOBAL'} 
                                                 onValueChange={(v) => updateOption(statement.id, opt.id, { endingId: v === 'GLOBAL' ? null : v })}
@@ -1456,7 +1472,7 @@ export default function App() {
                                                 </SelectTrigger>
                                                 <SelectContent className="z-[9999]">
                                                   <SelectItem value="GLOBAL">Global Fallback 🏠</SelectItem>
-                                                  {(endings || []).map((e) => (
+                                                  {(endings ?? []).map((e) => (
                                                     <SelectItem key={e.id} value={e.id}>{e.title}</SelectItem>
                                                   ))}
                                                 </SelectContent>
@@ -1580,13 +1596,29 @@ export default function App() {
         </DialogContent>
       </Dialog>
       
-      <EndingMessageDialog open={showEndingModal} onOpenChange={setShowEndingModal} ending={ending} setEnding={setEnding} endings={endings} setEndings={(e) => { hasUserEdited.current = true; setEndings(e); }} />
+      <EndingMessageDialog 
+        open={showEndingModal} 
+        onOpenChange={setShowEndingModal} 
+        ending={ending} 
+        setEnding={(e) => { 
+          hasUserEdited.current = true; 
+          setEnding(e);
+        }} 
+        endings={endings ?? []} 
+        setEndings={(e) => { 
+          hasUserEdited.current = true; 
+          setEndings(e); 
+        }} 
+      />
       
       <EntryMessageDialog 
         open={showEntryDialog} 
         onOpenChange={setShowEntryDialog} 
-        entryMessage={entryMessage} 
-        setEntryMessage={(e) => { hasUserEdited.current = true; setEntryMessage(e); }} 
+        entryMessage={entryMessage ?? { title: "", subtitle: "" }} 
+        setEntryMessage={(e) => { 
+          hasUserEdited.current = true; 
+          setEntryMessage(e); 
+        }} 
       />
 
       <Dialog open={showErrorDialog} onOpenChange={setShowErrorDialog}>
@@ -1596,7 +1628,7 @@ export default function App() {
             {validationErrors.map((err, i) => (
                <div 
                  key={i} 
-                 className={`p-3 rounded-xl border cursor-pointer hover:opacity-80 transition-all flex items-center justify-between ${err.type === 'warning' ? 'bg-primary/10 border-primary/20' : 'bg-accent/10 border-accent/20'}`}
+                 className={`p-3 rounded-xl border cursor-pointer hover:opacity-80 transition-all flex items-center justify-between bg-accent/10 border-accent/20`}
                  onClick={() => {
                    setShowErrorDialog(false);
                    setHighlightedErrorId(err.statementId);
@@ -1608,11 +1640,11 @@ export default function App() {
                    }
                  }}
                >
-                 <span className={`text-sm font-semibold ${err.type === 'warning' ? 'text-text-dark' : 'text-accent'}`}>
-                    {err.type === 'warning' ? '⚠ ' : ''}{err.message}
+                 <span className={`text-sm font-semibold text-accent`}>
+                    {err.message}
                  </span>
-                 <span className={`text-xs font-bold px-2 py-1 rounded-full uppercase ${err.type === 'warning' ? 'bg-primary/20 text-text-dark' : 'bg-accent/20 text-accent'}`}>
-                    Q{(statements || []).findIndex(s => s.id === err.statementId) + 1}
+                 <span className={`text-xs font-bold px-2 py-1 rounded-full uppercase bg-accent/20 text-accent`}>
+                    Q{(statements ?? []).findIndex(s => s.id === err.statementId) + 1}
                  </span>
                </div>
             ))}

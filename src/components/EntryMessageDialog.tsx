@@ -24,10 +24,19 @@ export const EntryMessageDialog: React.FC<EntryMessageDialogProps> = ({
   entryMessage,
   setEntryMessage,
 }) => {
+  const [localEntry, setLocalEntry] = React.useState(entryMessage);
 
   useEffect(() => {
-    if (open) playSound('panel');
-  }, [open]);
+    if (open) {
+      playSound('panel');
+      setLocalEntry(entryMessage);
+    }
+  }, [open, entryMessage]);
+
+  const handleSave = () => {
+    setEntryMessage(localEntry);
+    onOpenChange(false);
+  };
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -43,8 +52,8 @@ export const EntryMessageDialog: React.FC<EntryMessageDialogProps> = ({
               <div>
                 <Label className="text-xs uppercase tracking-widest text-text-dark/60 font-bold">Main Title</Label>
                 <Input 
-                  value={entryMessage.title}
-                  onChange={(e) => setEntryMessage({ ...entryMessage, title: e.target.value })}
+                  value={localEntry.title}
+                  onChange={(e) => setLocalEntry({ ...localEntry, title: e.target.value })}
                   className="stitched-input text-md font-bold mt-1"
                   placeholder="e.g., Hey cutie! 💖"
                 />
@@ -52,8 +61,8 @@ export const EntryMessageDialog: React.FC<EntryMessageDialogProps> = ({
               <div>
                 <Label className="text-xs uppercase tracking-widest text-text-dark/60 font-bold">Subtitle / Description</Label>
                 <Textarea 
-                  value={entryMessage.subtitle}
-                  onChange={(e) => setEntryMessage({ ...entryMessage, subtitle: e.target.value })}
+                  value={localEntry.subtitle}
+                  onChange={(e) => setLocalEntry({ ...localEntry, subtitle: e.target.value })}
                   className="stitched-input text-sm mt-1 min-h-[100px]"
                   placeholder="e.g., I made something just for you... 🥺"
                 />
@@ -62,7 +71,7 @@ export const EntryMessageDialog: React.FC<EntryMessageDialogProps> = ({
           </div>
           
           <Button 
-            onClick={() => onOpenChange(false)} 
+            onClick={handleSave} 
             className="w-full pill-button bg-premium-gradient font-bold h-12"
           >
             Save & Close ✨

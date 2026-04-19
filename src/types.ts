@@ -16,6 +16,7 @@ export interface User {
   data: {
     statements: Statement[];
     endings: Ending[];
+    fallbackEnding?: { title: string; subtitle: string };
     entryMessage: EntryMessage;
   };
 }

@@ -30,10 +30,16 @@ export const EndingMessageDialog: React.FC<EndingMessageDialogProps> = ({
   endings,
   setEndings,
 }) => {
+  const [localEnding, setLocalEnding] = useState(ending);
+  const [localEndings, setLocalEndings] = useState(endings);
 
   useEffect(() => {
-    if (open) playSound('panel');
-  }, [open]);
+    if (open) {
+      playSound('panel');
+      setLocalEnding(ending);
+      setLocalEndings(endings);
+    }
+  }, [open, ending, endings]);
 
   const addEnding = () => {
     const newEnding: Ending = {
@@ -41,15 +47,21 @@ export const EndingMessageDialog: React.FC<EndingMessageDialogProps> = ({
       title: "Another Happy Ending 🌸",
       subtitle: "You unlocked a special sequence!"
     };
-    setEndings([...endings, newEnding]);
+    setLocalEndings([...localEndings, newEnding]);
   };
 
   const updateEnding = (id: string, updates: Partial<Ending>) => {
-    setEndings(endings.map(e => e.id === id ? { ...e, ...updates } : e));
+    setLocalEndings(localEndings.map(e => e.id === id ? { ...e, ...updates } : e));
   };
 
   const deleteEnding = (id: string) => {
-    setEndings(endings.filter(e => e.id !== id));
+    setLocalEndings(localEndings.filter(e => e.id !== id));
+  };
+
+  const handleSave = () => {
+    setEnding(localEnding);
+    setEndings(localEndings);
+    onOpenChange(false);
   };
 
   return (
@@ -68,16 +80,16 @@ export const EndingMessageDialog: React.FC<EndingMessageDialogProps> = ({
               <div>
                 <Label className="text-xs uppercase tracking-widest text-text-dark/60 font-bold">Main Message</Label>
                 <Input 
-                  value={ending.title}
-                  onChange={(e) => setEnding({ ...ending, title: e.target.value })}
+                  value={localEnding.title}
+                  onChange={(e) => setLocalEnding({ ...localEnding, title: e.target.value })}
                   className="stitched-input text-md font-bold mt-1"
                 />
               </div>
               <div>
                 <Label className="text-xs uppercase tracking-widest text-text-dark/60 font-bold">Optional Sub Message</Label>
                 <Textarea 
-                  value={ending.subtitle}
-                  onChange={(e) => setEnding({ ...ending, subtitle: e.target.value })}
+                  value={localEnding.subtitle}
+                  onChange={(e) => setLocalEnding({ ...localEnding, subtitle: e.target.value })}
                   className="stitched-input text-sm mt-1"
                 />
               </div>
@@ -93,12 +105,12 @@ export const EndingMessageDialog: React.FC<EndingMessageDialogProps> = ({
             </div>
             
             <div className="space-y-4">
-              {endings.length === 0 && (
+              {localEndings.length === 0 && (
                 <div className="text-center py-6 border-2 border-dashed border-secondary rounded-2xl bg-secondary/10 text-muted-foreground text-sm font-semibold">
                   No custom endings yet. Create one! ✨
                 </div>
               )}
-              {endings.map((e, index) => (
+              {localEndings.map((e, index) => (
                 <div key={e.id} className="relative bg-white border border-secondary/50 rounded-2xl p-4 shadow-sm group hover:border-accent/30 transition-all">
                   <Button 
                     variant="ghost" 
@@ -131,6 +143,12 @@ export const EndingMessageDialog: React.FC<EndingMessageDialogProps> = ({
             </div>
           </div>
 
+          <Button 
+            onClick={handleSave} 
+            className="w-full pill-button bg-premium-gradient font-bold h-12"
+          >
+            Save & Close ✨
+          </Button>
         </div>
       </DialogContent>
     </Dialog>

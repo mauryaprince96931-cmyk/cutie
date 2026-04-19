@@ -8,8 +8,13 @@ export const fetchUserData = async (uid: string): Promise<User | null> => {
   const userDoc = await getDoc(userRef);
   
   if (userDoc.exists()) {
-    console.log("LOAD:", userDoc.data());
-    return { id: uid, ...userDoc.data() } as User;
+    const data = userDoc.data() as User;
+    console.log("LOAD:", {
+      endings: data.data?.endings,
+      fallbackEnding: data.data?.fallbackEnding,
+      entryMessage: data.data?.entryMessage
+    });
+    return { id: uid, ...data } as User;
   }
   return null;
 };
@@ -50,10 +55,22 @@ export const createUserData = async (uid: string, userData: Omit<User, 'id'>) =>
 
 export const saveUserDataDebounced = debounce(async (uid: string, data: User['data']) => {
   if (!data || !data.statements) {
-    console.warn("Blocked: attempted save with missing data");
+    console.warn("Blocked: missing base data");
     return;
   }
-  console.log("SAVE:", data);
+  
+  if (!Array.isArray(data.endings)) {
+    console.warn("Blocked: invalid endings");
+    return;
+  }
+
+  if (!data.entryMessage || !data.entryMessage.title) {
+    console.warn("Blocked: invalid entryMessage");
+    return;
+  }
+
+  console.log("UNIFIED SAVE:", data);
+  
   const userRef = doc(db, 'users', uid);
   await updateDoc(userRef, { data });
 }, 500);
