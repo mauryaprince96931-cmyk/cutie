@@ -603,8 +603,6 @@ export default function App() {
   const [showErrorDialog, setShowErrorDialog] = useState(false);
   const [saveStatus, setSaveStatus] = useState<'Saved 💾' | 'Saving...'>('Saved 💾');
   const [soundOn, setSoundOn] = useState(true);
-  const audioRef = useRef<HTMLAudioElement | null>(null);
-  const [musicOn, setMusicOn] = useState(() => localStorage.getItem('musicOn') === 'true');
   const [loadingText, setLoadingText] = useState("");
   const [isExitingLoading, setIsExitingLoading] = useState(false);
   const [statementToDelete, setStatementToDelete] = useState<string | null>(null);
@@ -729,68 +727,6 @@ export default function App() {
   useEffect(() => {
     hasUserEdited.current = false;
   }, [currentUser]);
-
-  // Audio System (User Specified)
-  useEffect(() => {
-    const audio = new Audio("/audio/bgm.mp3");
-
-    audio.loop = true;
-    audio.volume = 0.35;
-    audio.preload = "auto";
-
-    audio.addEventListener('error', (e) => {
-      console.error("Audio Error:", e);
-    });
-
-    audio.addEventListener('canplaythrough', () => {
-      console.log("Audio ready to play");
-    });
-
-    audioRef.current = audio;
-
-    console.log("Audio initialized:", audio.src);
-
-    return () => {
-      audio.pause();
-      audioRef.current = null;
-    };
-  }, []);
-
-  useEffect(() => {
-    const handleFirstInteraction = async () => {
-      if (!audioRef.current) return;
-
-      try {
-        await audioRef.current.play();
-        console.log("Music started after interaction");
-      } catch (err) {
-        console.error("Playback blocked:", err);
-      }
-
-      window.removeEventListener("click", handleFirstInteraction);
-    };
-
-    window.addEventListener("click", handleFirstInteraction);
-
-    return () => {
-      window.removeEventListener("click", handleFirstInteraction);
-    };
-  }, []);
-
-  const toggleMusic = async () => {
-    if (!audioRef.current) return;
-
-    try {
-      if (musicOn) {
-        audioRef.current.pause();
-      } else {
-        await audioRef.current.play();
-      }
-      setMusicOn(!musicOn);
-    } catch (err) {
-      console.error("Toggle failed:", err);
-    }
-  };
 
   // Auth Handlers
   const handleCreateUser = async (name: string, pass: string) => {
@@ -1595,9 +1531,6 @@ export default function App() {
             <motion.div initial={{ y: 50 }} animate={{ y: 0 }} exit={{ y: 50 }} className="fixed bottom-[calc(20px+env(safe-area-inset-bottom,24px))] left-6 flex bg-white/90 backdrop-blur-md p-1.5 rounded-full shadow-premium border border-primary/20 z-[5000]">
                 <Button variant={builderView === 'LIST' ? 'secondary' : 'ghost'} onClick={() => setBuilderView('LIST')} className={cn("rounded-full px-6", builderView === 'LIST' && "bg-premium-gradient text-white")}>List</Button>
                 <Button variant={builderView === 'FLOW' ? 'secondary' : 'ghost'} onClick={() => setBuilderView('FLOW')} className={cn("rounded-full px-6", builderView === 'FLOW' && "bg-premium-gradient text-white")}>Flow</Button>
-                <Button variant="ghost" onClick={toggleMusic} className="rounded-full px-6">
-                  {musicOn ? "Stop Music" : "Play Music"}
-                </Button>
             </motion.div>
             {builderView === 'LIST' && (
                 <motion.button initial={{ scale: 0 }} animate={{ scale: 1 }} exit={{ scale: 0 }} onClick={addStatement} className="fixed bottom-[calc(20px+env(safe-area-inset-bottom,24px))] right-6 w-16 h-16 bg-premium-gradient rounded-full shadow-premium flex items-center justify-center z-[5000] text-white">
