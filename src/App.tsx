@@ -1412,6 +1412,7 @@ export default function App() {
                       onOpenIntro={() => setShowEntryDialog(true)}
                       onOpenEndings={() => setShowEndingModal(true)}
                       saveStatus={saveStatus}
+                      validationErrors={validationErrors}
                     />
                   </div>
                 )}

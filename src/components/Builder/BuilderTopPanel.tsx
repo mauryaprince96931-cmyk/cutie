@@ -14,38 +14,39 @@ interface BuilderTopPanelProps {
   saveStatus?: string;
 }
 
-export const BuilderTopPanel = ({ onExport, onImport, onOpenIntro, onOpenEndings, saveStatus }: Omit<BuilderTopPanelProps, 'validationErrors'>) => {
+export const BuilderTopPanel = ({ onExport, onImport, onOpenIntro, onOpenEndings, saveStatus, validationErrors }: BuilderTopPanelProps) => {
   const { mode } = useAppContext();
   
   if (mode !== 'builder') return null;
 
   return (
-    <div className="bg-white/90 backdrop-blur-md p-5 rounded-[32px] shadow-soft sticky top-4 z-10 border border-white/50 space-y-4">
-      <div className="flex items-center justify-between gap-3">
-        <div className="flex items-center gap-2">
-          <Button variant="ghost" onClick={onExport} className="rounded-full text-xs font-bold text-muted-foreground h-9"><Download className="w-4 h-4 mr-2" /> Export</Button>
-          <div className="relative">
-            <input type="file" accept=".json" onChange={onImport} className="absolute inset-0 opacity-0 cursor-pointer" />
-            <Button variant="ghost" className="rounded-full text-xs font-bold text-muted-foreground h-9"><Upload className="w-4 h-4 mr-2" /> Import</Button>
-          </div>
+    <div className="flex flex-wrap items-center justify-center gap-3 px-4 py-3 bg-white/70 backdrop-blur-md rounded-2xl shadow-sm max-w-full overflow-hidden sticky top-4 z-10 border border-white/50">
+      <div className="flex items-center gap-2 flex-wrap justify-center">
+        <Button variant="ghost" onClick={onExport} className="flex items-center gap-2 px-3 py-2 text-sm rounded-xl whitespace-nowrap shrink-0 min-w-[90px] max-w-[140px] overflow-hidden text-ellipsis bg-pink-50 hover:bg-pink-100"><Download className="w-4 h-4" /> <span className="truncate">Export</span></Button>
+        <div className="relative">
+          <input type="file" accept=".json" onChange={onImport} className="absolute inset-0 opacity-0 cursor-pointer" />
+          <Button variant="ghost" className="flex items-center gap-2 px-3 py-2 text-sm rounded-xl whitespace-nowrap shrink-0 min-w-[90px] max-w-[140px] overflow-hidden text-ellipsis bg-pink-50 hover:bg-pink-100"><Upload className="w-4 h-4" /> <span className="truncate">Import</span></Button>
         </div>
-
-        <div className="flex items-center gap-2 flex-1 justify-center">
-          <Button variant="ghost" onClick={onOpenIntro} className="rounded-full text-xs font-bold text-muted-foreground h-9"><Sparkles className="w-4 h-4 mr-2" /> Intro</Button>
-          <Button variant="ghost" onClick={onOpenEndings} className="rounded-full text-xs font-bold text-muted-foreground h-9"><Heart className="w-4 h-4 mr-2" /> Endings</Button>
-        </div>
-
-        {saveStatus && (
-          <div className="flex items-center gap-2 px-4 py-1.5 rounded-full bg-secondary/10 border border-secondary/20">
-            <span className={cn(
-              "text-[10px] font-bold uppercase tracking-widest transition-colors",
-              saveStatus === 'Saving...' ? "text-accent animate-pulse" : "text-highlight"
-            )}>
-              {saveStatus}
-            </span>
-          </div>
-        )}
+        <Button variant="ghost" onClick={onOpenIntro} className="flex items-center gap-2 px-3 py-2 text-sm rounded-xl whitespace-nowrap shrink-0 min-w-[90px] max-w-[140px] overflow-hidden text-ellipsis bg-pink-50 hover:bg-pink-100"><Sparkles className="w-4 h-4" /> <span className="truncate">Intro</span></Button>
+        <Button variant="ghost" onClick={onOpenEndings} className="flex items-center gap-2 px-3 py-2 text-sm rounded-xl whitespace-nowrap shrink-0 min-w-[90px] max-w-[140px] overflow-hidden text-ellipsis bg-pink-50 hover:bg-pink-100"><Heart className="w-4 h-4" /> <span className="truncate">Endings</span></Button>
       </div>
+
+      {validationErrors && validationErrors.length > 0 && (
+        <div className="flex items-center gap-2 px-3 py-2 rounded-xl bg-red-100 text-red-700 text-sm font-bold shadow-sm whitespace-nowrap shrink-0">
+          {validationErrors.length} Errors ⚠️
+        </div>
+      )}
+
+      {saveStatus && (
+        <div className="flex items-center gap-2 px-4 py-1.5 rounded-full bg-secondary/10 border border-secondary/20">
+          <span className={cn(
+            "text-[10px] font-bold uppercase tracking-widest transition-colors",
+            saveStatus === 'Saving...' ? "text-accent animate-pulse" : "text-highlight"
+          )}>
+            {saveStatus}
+          </span>
+        </div>
+      )}
     </div>
   );
 };
