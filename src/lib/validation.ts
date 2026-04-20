@@ -19,6 +19,15 @@ export function getErrors(statements: Statement[]): ValidationError[] {
           message: 'Empty option'
         });
       }
+
+      if (opt.camoEnabled && (!opt.camoOption || !opt.camoOption.text || opt.camoOption.text.trim() === "")) {
+        errors.push({
+          statementId: s.id,
+          optionId: opt.id,
+          field: 'camoOption',
+          message: 'Camo enabled with no transformed text'
+        });
+      }
     });
   });
 

@@ -40,6 +40,14 @@ export interface Option {
   wrongMessage: string;
   endingId?: string | null;
   ending?: { title: string; subtitle: string } | null;
+  camoEnabled?: boolean;
+  camoOption?: {
+    text: string;
+    isCorrect?: boolean;
+    wrongMessage?: string;
+    nextId?: string | null;
+    endingId?: string | null;
+  };
 }
 
 export interface Statement {

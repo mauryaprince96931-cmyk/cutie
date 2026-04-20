@@ -606,6 +606,11 @@ export default function App() {
   const [loadingText, setLoadingText] = useState("");
   const [isExitingLoading, setIsExitingLoading] = useState(false);
   const [statementToDelete, setStatementToDelete] = useState<string | null>(null);
+  const [transformedOptions, setTransformedOptions] = useState<Record<string, Option>>({});
+  const [camoRevealed, setCamoRevealed] = useState<Record<string, boolean>>({});
+  const [isGlitching, setIsGlitching] = useState(false);
+  const [glitchTargetId, setGlitchTargetId] = useState<string | null>(null);
+  const [sparkles, setSparkles] = useState<{id: number, x: number, y: number}[]>([]);
   const isDeletingRef = useRef(false);
   const hasUserEdited = useRef(false);
 
@@ -692,7 +697,7 @@ export default function App() {
 
                   const data = docSnap.data();
 
-                  console.log("LOAD:", data.data);
+                  console.log("LOAD FULL:", data.data);
 
                   // CRITICAL: DO NOT overwrite active edits
                   if (hasUserEdited.current) return;
@@ -727,6 +732,13 @@ export default function App() {
   useEffect(() => {
     hasUserEdited.current = false;
   }, [currentUser]);
+
+  useEffect(() => {
+    setTransformedOptions({});
+    setCamoRevealed({});
+    setIsGlitching(false);
+    setGlitchTargetId(null);
+  }, [currentStatementId]);
 
   // Auth Handlers
   const handleCreateUser = async (name: string, pass: string) => {
@@ -992,6 +1004,8 @@ export default function App() {
   const startViewer = () => {
     if (!statements?.[0]) return;
     setCurrentStatementId(statements[0].id);
+    setTransformedOptions({});
+    setCamoRevealed({});
     setEndingActive(false);
     setMode('test');
     setShowEntryScreen(true);
@@ -1041,23 +1055,69 @@ export default function App() {
   const handleOptionSelect = (option: Option, x?: number, y?: number) => {
     if (endingActive) return;
     if (!option) return;
-    
-    if (option.isCorrect) {
+
+    const isRevealed = camoRevealed[option.id];
+
+    // Stage 1: Trigger Glitch Transformation
+    if (option.camoEnabled && !isRevealed) {
+      setGlitchTargetId(option.id);
+      setIsGlitching(true);
+      
+      // Create sparkles
+      const newSparkles = Array.from({ length: 8 }).map((_, i) => ({
+        id: Date.now() + i,
+        x: (x || window.innerWidth / 2) + (Math.random() - 0.5) * 100,
+        y: (y || window.innerHeight / 2) + (Math.random() - 0.5) * 100
+      }));
+      setSparkles(newSparkles);
+      setTimeout(() => setSparkles([]), 400);
+
+      setTimeout(() => {
+        if (!option.camoOption) {
+          console.warn("Invalid camo config: No transformed option defined.");
+          setIsGlitching(false);
+          setGlitchTargetId(null);
+          return;
+        }
+
+        setCamoRevealed(prev => ({
+          ...prev,
+          [option.id]: true
+        }));
+        setIsGlitching(false);
+        setGlitchTargetId(null);
+      }, 350);
+      return; // NO navigation here
+    }
+
+    // Stage 2: Normal routing Logic for clicking an active option
+    const active = (isRevealed && option.camoOption) ? { ...option, ...option.camoOption, id: option.id } : option;
+
+    if (active.isCorrect === true || active.isCorrect === undefined) {
       if (x !== undefined && y !== undefined) createRipple(x, y);
-      if (option.endingId || option.ending || !option.nextId) {
-        const endData = (option.endingId ? endings?.find(e => e.id === option.endingId) : option.ending) ?? ending;
+
+      if (active.endingId || active.ending) {
+        const endData = (active.endingId ? endings?.find(e => e.id === active.endingId) : active.ending) ?? ending;
         setCurrentEndingDisplay(endData);
         setTimeout(() => {
           setEndingActive(true);
           setCurrentStatementId('END');
         }, 300);
         playSound('ending');
-      } else {
-        setTimeout(() => setCurrentStatementId(option.nextId!), 300);
-        playSound('correct');
+        return;
       }
+
+      if (active.nextId) {
+        setTimeout(() => {
+          setCurrentStatementId(active.nextId!);
+        }, 300);
+        playSound('correct');
+        return;
+      }
+
+      console.warn("No nextId or endingId — staying on same question");
     } else {
-      setWrongMessage(option.wrongMessage ?? WRONG_MESSAGES[Math.floor(Math.random() * WRONG_MESSAGES.length)]);
+      setWrongMessage(active.wrongMessage ?? WRONG_MESSAGES[Math.floor(Math.random() * WRONG_MESSAGES.length)]);
       setShowWrongPopup(true);
       playSound('wrong');
     }
@@ -1381,6 +1441,89 @@ export default function App() {
                                           <Switch checked={opt.isCorrect} onCheckedChange={(v) => updateOption(statement.id, opt.id, { isCorrect: v })} />
                                           <span>{opt.isCorrect ? 'Correct ✨' : 'Wrong 🧸'}</span>
                                         </div>
+                                        <div className="flex items-center gap-2">
+                                            <Switch checked={!!opt.camoEnabled} onCheckedChange={(v) => updateOption(statement.id, opt.id, { camoEnabled: v, camoOption: v ? { text: 'Transformed Text', isCorrect: true, nextId: null, endingId: null } : undefined })} />
+                                            <span>Camo Mode 🧬</span>
+                                        </div>
+
+                                        {opt.camoEnabled && opt.camoOption && (
+                                            <div className="w-full p-4 bg-white/50 rounded-xl mt-2 border border-secondary/40 shadow-soft">
+                                                <p className="text-xs font-bold text-primary mb-3">🛠️ Camo Transformed Option Editor</p>
+                                                
+                                                <div className="space-y-3">
+                                                  <Input 
+                                                    value={opt.camoOption.text} 
+                                                    onChange={(e) => {
+                                                        hasUserEdited.current = true;
+                                                        updateOption(statement.id, opt.id, { 
+                                                          camoOption: { ...opt.camoOption!, text: e.target.value }
+                                                        });
+                                                    }} 
+                                                    className="text-sm font-semibold" 
+                                                    placeholder="Ghost option text..." 
+                                                  />
+
+                                                  <div className="flex items-center gap-4 bg-white p-3 rounded-lg border border-secondary/20">
+                                                    <div className="flex items-center gap-2">
+                                                      <Switch 
+                                                        checked={opt.camoOption.isCorrect ?? true} 
+                                                        onCheckedChange={(v) => updateOption(statement.id, opt.id, { camoOption: { ...opt.camoOption!, isCorrect: v } })} 
+                                                      />
+                                                      <span className="text-[10px]">{(opt.camoOption.isCorrect ?? true) ? 'Correct ✨' : 'Wrong 🧸'}</span>
+                                                    </div>
+
+                                                    {(opt.camoOption.isCorrect ?? true) ? (
+                                                      <div className="flex flex-col gap-2 min-w-[140px] flex-grow">
+                                                        <Select 
+                                                          value={opt.camoOption.nextId || 'END'} 
+                                                          onValueChange={(v) => {
+                                                            const nextId = v === 'END' ? null : v;
+                                                            updateOption(statement.id, opt.id, { 
+                                                              camoOption: { ...opt.camoOption!, nextId, endingId: nextId ? null : opt.camoOption!.endingId }
+                                                            });
+                                                          }}
+                                                        >
+                                                          <SelectTrigger className="h-8 text-[11px]"><SelectValue placeholder="Next Step" /></SelectTrigger>
+                                                          <SelectContent className="z-[9999]">
+                                                            <SelectItem value="END">Ending 🏁</SelectItem>
+                                                            {(statements ?? []).filter(s => s.id !== statement.id).map((s, i) => (
+                                                              <SelectItem key={s.id} value={s.id}>
+                                                                Next #{(statements ?? []).indexOf(s) + 1}
+                                                              </SelectItem>
+                                                            ))}
+                                                          </SelectContent>
+                                                        </Select>
+            
+                                                        {/* Specific Ending Selector */}
+                                                        {!opt.camoOption.nextId && (endings ?? []).length > 0 && (
+                                                          <Select 
+                                                            value={opt.camoOption.endingId || 'GLOBAL'} 
+                                                            onValueChange={(v) => updateOption(statement.id, opt.id, { camoOption: { ...opt.camoOption!, endingId: v === 'GLOBAL' ? null : v } })}
+                                                          >
+                                                            <SelectTrigger className="h-7 text-[10px] bg-primary/10 border-primary/20 text-primary">
+                                                              <SelectValue placeholder="Select Ending" />
+                                                            </SelectTrigger>
+                                                            <SelectContent className="z-[9999]">
+                                                              <SelectItem value="GLOBAL">Global Fallback 🏠</SelectItem>
+                                                              {(endings ?? []).map((e) => (
+                                                                <SelectItem key={e.id} value={e.id}>{e.title}</SelectItem>
+                                                              ))}
+                                                            </SelectContent>
+                                                          </Select>
+                                                        )}
+                                                      </div>
+                                                    ) : (
+                                                      <Input 
+                                                        value={opt.camoOption.wrongMessage ?? ''}
+                                                        onChange={(e) => updateOption(statement.id, opt.id, { camoOption: { ...opt.camoOption!, wrongMessage: e.target.value } })}
+                                                        className="h-8 text-xs flex-grow"
+                                                        placeholder="Oops message..."
+                                                      />
+                                                    )}
+                                                  </div>
+                                                </div>
+                                            </div>
+                                        )}
                                         {opt.isCorrect ? (
                                           <div className="flex flex-col gap-2 min-w-[140px]">
                                             <Select 
@@ -1498,11 +1641,23 @@ export default function App() {
                       <Card className="scrapbook-card p-8 md:p-12 space-y-10 shadow-premium">
                         <h2 className="text-3xl font-heading font-extrabold text-gradient">{currentStatement.text}</h2>
                         <div className="flex flex-col gap-4">
-                          {currentStatement.options.map((opt) => (
-                            <Button key={opt.id} onClick={(e) => handleOptionSelect(opt, e.clientX, e.clientY)} className="pill-button min-h-[60px] text-lg bg-premium-gradient">
-                              {opt.text}
-                            </Button>
-                          ))}
+                          {currentStatement.options.map((opt) => {
+                            const isRevealed = camoRevealed[opt.id];
+                            const displayedOpt = (isRevealed && opt.camoOption) ? { ...opt, ...opt.camoOption, id: opt.id } : opt;
+                            return (
+                              <Button 
+                                key={opt.id} 
+                                onClick={(e) => handleOptionSelect(opt, e.clientX, e.clientY)} 
+                                data-text={displayedOpt.text}
+                                className={cn(
+                                  "pill-button min-h-[60px] text-lg bg-premium-gradient transition-all",
+                                  glitchTargetId === opt.id && isGlitching && "camo-glitch"
+                                )}
+                              >
+                                {displayedOpt.text}
+                              </Button>
+                            );
+                          })}
                         </div>
                       </Card>
                     </motion.div>
@@ -1530,6 +1685,15 @@ export default function App() {
           </>
         )}
       </AnimatePresence>
+
+      {/* Particles */}
+      {sparkles.map(s => (
+        <div 
+          key={s.id} 
+          className="sparkle" 
+          style={{ left: s.x, top: s.y }}
+        />
+      ))}
 
       {/* Modals */}
       <Dialog open={showWrongPopup} onOpenChange={setShowWrongPopup}>
