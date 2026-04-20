@@ -601,7 +601,7 @@ export default function App() {
   const [showEntryScreen, setShowEntryScreen] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
   const [showErrorDialog, setShowErrorDialog] = useState(false);
-  const [saveStatus, setSaveStatus] = useState<'Saved 💾' | 'Saving...'>('Saved 💾');
+  const [saveStatus, setSaveStatus] = useState('');
   const [soundOn, setSoundOn] = useState(true);
   const [loadingText, setLoadingText] = useState("");
   const [isExitingLoading, setIsExitingLoading] = useState(false);
@@ -619,13 +619,17 @@ export default function App() {
     if (!currentUser || mode !== 'builder') return;
     if (!hasUserEdited.current) return;
 
-    saveUserDataDebounced(currentUser.id, {
-      statements: statements ?? DEFAULT_STATEMENTS,
-      endings: endings ?? [],
-      fallbackEnding: ending ?? { title: "You chose love 💖", subtitle: "I knew you would… 🥺" },
-      entryMessage: entryMessage ?? { title: "Hey cutie 💖", subtitle: "I made something for you… 🥺" }
-    });
-  }, [statements, endings, ending, entryMessage, currentUser, mode]);
+    const payload = {
+      statements,
+      endings,
+      entryMessage
+    };
+
+    console.log("Saving:", payload);
+
+    saveUserDataDebounced(currentUser.id, payload);
+
+  }, [statements, endings, entryMessage, currentUser, mode]);
 
   // Fetch Users for Admin Panel
   useEffect(() => {
@@ -634,100 +638,31 @@ export default function App() {
     }
   }, [isAdmin]);
 
-  // Auth & Data Lifecycle
+  // Load Logic
   useEffect(() => {
-    initAudio();
-    if (!isConfigValid) {
-        setIsReady(true);
-        setMode('login');
-        return;
-    }
+    if (!currentUser) return;
 
-    let snapshotUnsub: (() => void) | null = null;
+    const userRef = doc(db, "users", currentUser.id);
 
-    const unsub = onAuthStateChanged(auth, async (firebaseUser) => {
-        if (snapshotUnsub) {
-            snapshotUnsub();
-            snapshotUnsub = null;
-        }
+    const unsub = onSnapshot(userRef, (docSnap) => {
+      if (!docSnap.exists()) return;
 
-        if (firebaseUser) {
-            setIsLoading(true);
-            try {
-                let userData = await fetchUserData(firebaseUser.uid);
-                
-                // --- Bootstrap Admin Logic ---
-                const ADMIN_EMAIL = 'mauryaprince96931@gmail.com';
-                
-                if (!userData) {
-                   // Initial Profile Creation
-                   const isFirstAdmin = firebaseUser.email === ADMIN_EMAIL;
-                   userData = await createUserData(firebaseUser.uid, {
-                       name: firebaseUser.displayName || firebaseUser.email?.split('@')[0] || 'Cutie',
-                       email: firebaseUser.email || '',
-                       passcode: 'admin-auth', // Internal placeholder for admin
-                       role: isFirstAdmin ? 'admin' : 'user',
-                       data: {
-                           statements: DEFAULT_STATEMENTS,
-                           endings: [],
-                           entryMessage: { title: "Hey cutie 💖", subtitle: "I made something for you… 🥺" }
-                       }
-                   });
-                }
+      const data = docSnap.data();
 
-                if (userData) {
-                    setCurrentUser(userData);
-                    setStatements(userData.data?.statements ?? DEFAULT_STATEMENTS);
-                    setEndings(userData.data?.endings ?? []);
-                    setEnding(userData.data?.fallbackEnding ?? { title: "You chose love 💖", subtitle: "I knew you would… 🥺" });
-                    setEntryMessage(userData.data?.entryMessage ?? { title: "Hey cutie 💖", subtitle: "I made something for you… 🥺" });
-                    setDataLoaded(true);
-                    
-                    if (userData.role === 'admin' || firebaseUser.email === ADMIN_EMAIL) {
-                        setIsAdmin(true);
-                        setMode('admin');
-                    } else {
-                        setMode('loading');
-                    }
-                }
+      console.log("Loaded:", data);
 
-                const userRef = doc(db, 'users', firebaseUser.uid);
-                snapshotUnsub = onSnapshot(userRef, (docSnap) => {
-                  if (!docSnap.exists()) return;
+      setStatements(data.data?.statements ?? []);
+      setEndings(data.data?.endings ?? []);
+      setEntryMessage(data.data?.entryMessage ?? {
+        title: "",
+        subtitle: ""
+      });
 
-                  const data = docSnap.data();
-
-                  console.log("LOAD FULL:", data.data);
-
-                  // CRITICAL: DO NOT overwrite active edits
-                  if (hasUserEdited.current) return;
-
-                  setStatements(data.data?.statements ?? DEFAULT_STATEMENTS);
-                  setEndings(data.data?.endings ?? []);
-                  setEnding(data.data?.fallbackEnding ?? { title: "You chose love 💖", subtitle: "I knew you would… 🥺" });
-                  setEntryMessage(data.data?.entryMessage ?? { title: "Hey cutie 💖", subtitle: "I made something for you… 🥺" });
-                });
-
-            } catch (e) {
-                console.error("Failed to fetch/bootstrap user data:", e);
-                setMode('login');
-            } finally {
-                setIsLoading(false);
-                setIsReady(true);
-            }
-        } else {
-            setIsAdmin(false);
-            setCurrentUser(null);
-            setMode('login');
-            setIsReady(true);
-        }
+      hasUserEdited.current = false;
     });
 
-    return () => {
-        unsub();
-        if (snapshotUnsub) snapshotUnsub();
-    };
-  }, []);
+    return () => unsub();
+  }, [currentUser]);
 
   useEffect(() => {
     hasUserEdited.current = false;
@@ -1052,76 +987,30 @@ export default function App() {
     setTimeout(() => ripple.remove(), 600);
   };
 
-  const handleOptionSelect = (option: Option, x?: number, y?: number) => {
-    if (endingActive) return;
-    if (!option) return;
+  function handleOptionSelect(option: Option) {
+    console.log("Clicked:", option);
 
-    const isRevealed = camoRevealed[option.id];
+    if (option.endingId) {
+      const ending = (endings ?? []).find(e => e.id === option.endingId);
 
-    // Stage 1: Trigger Glitch Transformation
-    if (option.camoEnabled && !isRevealed) {
-      setGlitchTargetId(option.id);
-      setIsGlitching(true);
-      
-      // Create sparkles
-      const newSparkles = Array.from({ length: 8 }).map((_, i) => ({
-        id: Date.now() + i,
-        x: (x || window.innerWidth / 2) + (Math.random() - 0.5) * 100,
-        y: (y || window.innerHeight / 2) + (Math.random() - 0.5) * 100
-      }));
-      setSparkles(newSparkles);
-      setTimeout(() => setSparkles([]), 400);
-
-      setTimeout(() => {
-        if (!option.camoOption) {
-          console.warn("Invalid camo config: No transformed option defined.");
-          setIsGlitching(false);
-          setGlitchTargetId(null);
-          return;
-        }
-
-        setCamoRevealed(prev => ({
-          ...prev,
-          [option.id]: true
-        }));
-        setIsGlitching(false);
-        setGlitchTargetId(null);
-      }, 350);
-      return; // NO navigation here
-    }
-
-    // Stage 2: Normal routing Logic for clicking an active option
-    const active = (isRevealed && option.camoOption) ? { ...option, ...option.camoOption, id: option.id } : option;
-
-    if (active.isCorrect === true || active.isCorrect === undefined) {
-      if (x !== undefined && y !== undefined) createRipple(x, y);
-
-      if (active.endingId || active.ending) {
-        const endData = (active.endingId ? endings?.find(e => e.id === active.endingId) : active.ending) ?? ending;
-        setCurrentEndingDisplay(endData);
-        setTimeout(() => {
-          setEndingActive(true);
-          setCurrentStatementId('END');
-        }, 300);
-        playSound('ending');
+      if (!ending) {
+        console.error("Ending missing:", option.endingId);
         return;
       }
 
-      if (active.nextId) {
-        setTimeout(() => {
-          setCurrentStatementId(active.nextId!);
-        }, 300);
-        playSound('correct');
-        return;
-      }
-
-      console.warn("No nextId or endingId — staying on same question");
-    } else {
-      setWrongMessage(active.wrongMessage ?? WRONG_MESSAGES[Math.floor(Math.random() * WRONG_MESSAGES.length)]);
-      setShowWrongPopup(true);
-      playSound('wrong');
+      setEnding(ending);
+      setEndingActive(true);
+      setCurrentStatementId('END');
+      return;
     }
-  };
+
+    if (option.nextId) {
+      setCurrentStatementId(option.nextId);
+      return;
+    }
+
+    console.warn("No nextId or endingId");
+  }
 
   const currentStatement = (statements ?? []).find(s => s.id === currentStatementId) ?? (statements ?? [])[0];
 
@@ -1647,7 +1536,7 @@ export default function App() {
                             return (
                               <Button 
                                 key={opt.id} 
-                                onClick={(e) => handleOptionSelect(opt, e.clientX, e.clientY)} 
+                                onClick={() => handleOptionSelect(opt)} 
                                 data-text={displayedOpt.text}
                                 className={cn(
                                   "pill-button min-h-[60px] text-lg bg-premium-gradient transition-all",
