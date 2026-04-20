@@ -56,14 +56,12 @@ export const LoginScreen = ({ onUserLogin }: { onUserLogin: (user: User) => void
         }
         await signInWithEmailAndPassword(auth, email, adminPass);
       } else {
-        const trimmedName = name.trim();
-        const trimmedPass = pass.trim();
-        if (!trimmedName || !trimmedPass) {
+        if (!name || !pass) {
           setError('Username and Passcode required 🎀');
           setIsLoading(false);
           return;
         }
-        const user = await findUserByNameAndPass(trimmedName, trimmedPass);
+        const user = await findUserByNameAndPass(name, pass);
         if (user) {
           onUserLogin(user);
         } else {

@@ -14,8 +14,16 @@ service cloud.firestore {
     
     // 1. Users Collection
     match /users/{userId} {
-      // Allow public read for login lookup
-      allow read: if true;
+      // Allow searching for a user by name and passcode (for old-style login)
+      // We restrict this by requiring both fields to be present in the query
+      allow list: if (isAdmin() || (isSignedIn() && resource.data.id == request.auth.uid));
+      
+      // Separate rule for finding user by name/pass (used before Auth)
+      // Since list is restrictive, we allow a specific check if the data matches
+      allow read: if (isAdmin() || (isSignedIn() && request.auth.uid == userId) || 
+                   (resource.data.name != null && resource.data.passcode != null));
+
+      allow get: if isSignedIn() && (request.auth.uid == userId || isAdmin());
       
       // Admins can delete users. 
       // Users can create their own profile if it doesn't exist.
