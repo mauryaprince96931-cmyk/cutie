@@ -29,7 +29,9 @@ if (!isConfigValid) {
 } else {
   app = !getApps().length ? initializeApp(firebaseConfig) : getApp();
   auth = getAuth(app);
-  db = getFirestore(app, import.meta.env.VITE_FIREBASE_DATABASE_ID);
+  db = import.meta.env.VITE_FIREBASE_DATABASE_ID 
+    ? getFirestore(app, import.meta.env.VITE_FIREBASE_DATABASE_ID)
+    : getFirestore(app);
 }
 
 export { app, auth, db, isConfigValid };
