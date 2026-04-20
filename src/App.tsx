@@ -95,7 +95,6 @@ import { ValidationError, User, Statement, Ending, Option, EntryMessage } from '
 interface SortableItemProps {
   id: string;
   children: React.ReactNode;
-  key?: string;
 }
 
 const SortableItem = ({ id, children }: SortableItemProps) => {
@@ -142,9 +141,22 @@ const SortableItem = ({ id, children }: SortableItemProps) => {
 };
 
 // --- Constants ---
+const WRONG_MESSAGES = [
+  "Hehe wrong choice 😝💞",
+  "Not this one silly! 💕",
+  "Almost there… try again 🌸",
+  "Naughty choice 😤💖 try again!",
+  "Oops! My heart says no 😳💓",
+  "Try again baby 💕 you got this!"
+];
 
-const AUTH_KEY = 'cute_app_auth';
-const DATA_KEY = 'cute_app_data';
+const LOADING_MESSAGES = [
+  "Wait a bit, Miss Cutie 💖",
+  "Picking flowers just for you 🌸",
+  "Be patient, my lady 🥺",
+  "Pretty things take time ✨",
+  "A cutie is waiting… how sweet 💕"
+];
 
 // --- Loading Component ---
 const LoadingMessage = () => {
@@ -181,18 +193,18 @@ const LoadingMessage = () => {
 
 const DEFAULT_STATEMENTS: Statement[] = [
   {
-    id: '1',
+    id: 'default-stmt-001',
     text: 'Do you love me? 💖',
     options: [
       {
-        id: 'opt1',
+        id: 'default-opt-001',
         text: 'Yes, forever! ✨',
         nextId: null,
         isCorrect: true,
         wrongMessage: ''
       },
       {
-        id: 'opt2',
+        id: 'default-opt-002',
         text: 'Maybe... 🙄',
         nextId: null,
         isCorrect: false,
@@ -225,18 +237,20 @@ const FlowView = ({ statements, validationErrors, onEditNode }: FlowViewProps) =
   const lastPinchDist = useRef<number | null>(null);
   
   useEffect(() => {
-    const newPositions = { ...positions };
-    let changed = false;
-    (statements ?? []).forEach((s, i) => {
-      if (!newPositions[s.id]) {
-        newPositions[s.id] = { 
-          x: 150 + (i % 3) * 350, 
-          y: 150 + Math.floor(i / 3) * 280 
-        };
-        changed = true;
-      }
+    setPositions(prev => {
+      const newPositions = { ...prev };
+      let changed = false;
+      (statements ?? []).forEach((s, i) => {
+        if (!newPositions[s.id]) {
+          newPositions[s.id] = { 
+            x: 150 + (i % 3) * 350, 
+            y: 150 + Math.floor(i / 3) * 280 
+          };
+          changed = true;
+        }
+      });
+      return changed ? newPositions : prev;
     });
-    if (changed) setPositions(newPositions);
   }, [statements]);
 
   const handleDrag = (id: string, delta: { x: number, y: number }) => {
@@ -319,27 +333,33 @@ const FlowView = ({ statements, validationErrors, onEditNode }: FlowViewProps) =
     }
   };
 
-  const handleWheel = (e: React.WheelEvent) => {
-    e.preventDefault();
-    const rect = containerRef.current?.getBoundingClientRect();
-    if (!rect) return;
+  useEffect(() => {
+    const el = containerRef.current;
+    if (!el) return;
 
-    const localX = e.clientX - rect.left;
-    const localY = e.clientY - rect.top;
+    const handleWheel = (e: WheelEvent) => {
+      e.preventDefault();
+      const rect = el.getBoundingClientRect();
+      const localX = e.clientX - rect.left;
+      const localY = e.clientY - rect.top;
 
-    const delta = -e.deltaY;
-    const factor = delta > 0 ? 1.05 : 0.95;
-    const newScale = Math.min(Math.max(transform.scale * factor, 0.6), 2.0);
+      const delta = -e.deltaY;
+      const factor = delta > 0 ? 1.05 : 0.95;
+      
+      setTransform(prev => {
+        const newScale = Math.min(Math.max(prev.scale * factor, 0.6), 2.0);
+        const scaleRatio = newScale / prev.scale;
+        return {
+          scale: newScale,
+          x: localX - (localX - prev.x) * scaleRatio,
+          y: localY - (localY - prev.y) * scaleRatio
+        };
+      });
+    };
 
-    setTransform(prev => {
-      const scaleRatio = newScale / prev.scale;
-      return {
-        scale: newScale,
-        x: localX - (localX - prev.x) * scaleRatio,
-        y: localY - (localY - prev.y) * scaleRatio
-      };
-    });
-  };
+    el.addEventListener('wheel', handleWheel, { passive: false });
+    return () => el.removeEventListener('wheel', handleWheel);
+  }, []);
 
   const resetView = () => setTransform({ x: 0, y: 0, scale: 1 });
 
@@ -351,7 +371,6 @@ const FlowView = ({ statements, validationErrors, onEditNode }: FlowViewProps) =
       onPointerMove={handlePointerMove}
       onPointerUp={handlePointerUp}
       onPointerCancel={handlePointerUp}
-      onWheel={handleWheel}
       style={{ touchAction: 'none' }}
     >
       {/* Canvas Controls */}
@@ -419,7 +438,9 @@ const FlowView = ({ statements, validationErrors, onEditNode }: FlowViewProps) =
                 const to = positions[opt.nextId];
                 if (!from || !to) return null;
 
-                const x1 = from.x + 220;
+                const NODE_WIDTH = 220;
+                
+                const x1 = from.x + NODE_WIDTH;
                 const y1 = from.y + 60;
                 const x2 = to.x;
                 const y2 = to.y + 60;
@@ -534,16 +555,25 @@ const FlowView = ({ statements, validationErrors, onEditNode }: FlowViewProps) =
 // --- Decorative Components ---
 
 const FloatingElements = () => {
+  const elements = useMemo(() =>
+    [...Array(8)].map((_, i) => ({
+      x: Math.random() * 100,
+      y: Math.random() * 100,
+      scale: Math.random() * 0.5 + 0.5,
+      duration: Math.random() * 20 + 25,
+      delay: Math.random() * -30
+    })), []);
+
   return (
     <div className="fixed inset-0 pointer-events-none overflow-hidden z-[-1]">
-      {[...Array(8)].map((_, i) => (
+      {elements.map((el, i) => (
         <motion.div
           key={i}
           initial={{ 
-            x: Math.random() * 100 + '%', 
-            y: Math.random() * 100 + '%',
+            x: el.x + '%', 
+            y: el.y + '%',
             opacity: 0,
-            scale: Math.random() * 0.5 + 0.5
+            scale: el.scale
           }}
           animate={{ 
             y: ['-10%', '110%'],
@@ -551,10 +581,10 @@ const FloatingElements = () => {
             opacity: [0, 0.15, 0]
           }}
           transition={{ 
-            duration: Math.random() * 20 + 25, 
+            duration: el.duration, 
             repeat: Infinity, 
             ease: "linear",
-            delay: Math.random() * -30
+            delay: el.delay
           }}
           className="absolute text-primary/30 text-3xl"
         >
@@ -565,32 +595,12 @@ const FloatingElements = () => {
   );
 };
 
-const WRONG_MESSAGES = [
-  "Oopsiee! That’s not the one 🥺💖",
-  "Aww nooo… try again cutie ✨",
-  "Hehe wrong choice 😝💞",
-  "Not this one silly! 💕",
-  "Almost there… try again 🌸",
-  "Naughty choice 😤💖 try again!",
-  "Oops! My heart says no 😳💓",
-  "Try again baby 💕 you got this!"
-];
-
-const LOADING_MESSAGES = [
-  "Wait a bit, Miss Cutie 💖",
-  "Picking flowers just for you 🌸",
-  "Be patient, my lady 🥺",
-  "Pretty things take time ✨",
-  "A cutie is waiting… how sweet 💕"
-];
-
 // --- Main App ---
 
 export default function App() {
   const [users, setUsers] = useState<User[]>([]);
   const { mode, setMode, currentUser, setCurrentUser, isAdmin, setIsAdmin, currentStatementId, setCurrentStatementId, endingActive, setEndingActive, statements, setStatements, endings, setEndings, ending, setEnding, entryMessage, setEntryMessage, isLoading, setIsLoading, dataLoaded, setDataLoaded } = useAppContext();
   const [builderView, setBuilderView] = useState<BuilderView>('LIST');
-  const [isReady, setIsReady] = useState(false);
   const [hasError, setHasError] = useState(false);
   const [currentEndingDisplay, setCurrentEndingDisplay] = useState<{title: string, subtitle: string} | null>(null);
   const [showEndingModal, setShowEndingModal] = useState(false);
@@ -602,7 +612,7 @@ export default function App() {
   const [errorMessage, setErrorMessage] = useState('');
   const [showErrorDialog, setShowErrorDialog] = useState(false);
   const [saveStatus, setSaveStatus] = useState('');
-  const [soundOn, setSoundOn] = useState(true);
+  const [soundOn, setSoundOn] = useState(() => loadSoundPreference());
   const [loadingText, setLoadingText] = useState("");
   const [isExitingLoading, setIsExitingLoading] = useState(false);
   const [statementToDelete, setStatementToDelete] = useState<string | null>(null);
@@ -630,6 +640,27 @@ export default function App() {
     saveUserDataDebounced(currentUser.id, payload);
 
   }, [statements, endings, entryMessage, currentUser, mode]);
+
+  // Auth state listener
+  useEffect(() => {
+    if (!isConfigValid) return;
+    
+    const unsub = onAuthStateChanged(auth, async (firebaseUser) => {
+      if (firebaseUser) {
+        setIsAdmin(true);
+        const userData = await fetchUserData(firebaseUser.uid);
+        if (userData && mode === 'login') {
+          setCurrentUser(userData);
+          setMode('admin');
+        }
+      } else if (mode !== 'login' && isAdmin) {
+        setIsAdmin(false);
+        setCurrentUser(null);
+        setMode('login');
+      }
+    });
+    return () => unsub();
+  }, []);
 
   // Fetch Users for Admin Panel
   useEffect(() => {
@@ -691,7 +722,7 @@ export default function App() {
     };
     
     // Create with a random ID since these aren't Firebase Auth users
-    const uid = `user_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+    const uid = crypto.randomUUID();
     const created = await createUserData(uid, newUser);
     setUsers([...users, created]);
   };
@@ -705,18 +736,7 @@ export default function App() {
     deleteUser(id);
   };
 
-  const handleUserLogin = (user: User) => {
-    hasUserEdited.current = false;
-    setCurrentUser(user);
-    setStatements(user.data?.statements ?? DEFAULT_STATEMENTS);
-    setEndings(user.data?.endings ?? []);
-    setEnding(user.data?.fallbackEnding ?? { title: "You chose love 💖", subtitle: "I knew you would… 🥺" });
-    setEntryMessage(user.data?.entryMessage ?? { title: "Hey cutie 💖", subtitle: "I made something for you… 🥺" });
-    setDataLoaded(true);
-    setMode('loading');
-  };
-
-  const handleEnterBuilder = (user: User) => {
+  const loadUserIntoContext = (user: User) => {
     hasUserEdited.current = false;
     setCurrentUser(user);
     setStatements(user.data?.statements ?? DEFAULT_STATEMENTS);
@@ -728,13 +748,27 @@ export default function App() {
         subtitle: "I made something for you… 🥺"
       }
     );
+  };
+
+  const handleUserLogin = (user: User) => {
+    loadUserIntoContext(user);
+    setDataLoaded(true);
+    setMode('loading');
+  };
+
+  const handleEnterBuilder = (user: User) => {
+    loadUserIntoContext(user);
+    setDataLoaded(true);
     setMode('builder');
   };
 
   const handleLogout = () => {
     if (isAdmin) {
       if (mode === 'admin') {
-        auth.signOut();
+        auth.signOut().catch(console.error);
+        setIsAdmin(false);
+        setCurrentUser(null);
+        setMode('login');
       } else {
         // Just go back to user list
         setMode('admin');
@@ -742,8 +776,11 @@ export default function App() {
       }
     } else {
       // Regular user logs out
-      auth.signOut();
       setCurrentUser(null);
+      setStatements(null);
+      setEndings(null);
+      setEntryMessage(null);
+      setDataLoaded(false);
       setMode('login');
     }
   };
@@ -776,6 +813,8 @@ export default function App() {
         setCurrentStatementId(null);
         setShowEntryScreen(true);
         setMode('viewer');
+        setDataLoaded(true);
+        setIsLoading(false);
       }, delay);
 
       return () => {
@@ -836,20 +875,20 @@ export default function App() {
 
   const addStatement = () => {
     hasUserEdited.current = true;
-    const newId = Math.random().toString(36).substr(2, 9);
+    const newId = crypto.randomUUID();
     const newStatement: Statement = {
       id: newId,
       text: 'New Question? 🌸',
       options: [
         {
-          id: Math.random().toString(36).substr(2, 9),
+          id: crypto.randomUUID(),
           text: 'Option A',
           nextId: null,
           isCorrect: true,
           wrongMessage: ''
         },
         {
-          id: Math.random().toString(36).substr(2, 9),
+          id: crypto.randomUUID(),
           text: 'Option B',
           nextId: null,
           isCorrect: false,
@@ -892,7 +931,7 @@ export default function App() {
     const updated = (statements ?? []).map(s => {
       if (s.id === statementId) {
         const newOption: Option = {
-          id: Math.random().toString(36).substr(2, 9),
+          id: crypto.randomUUID(),
           text: `Option ${String.fromCharCode(65 + s.options.length)}`,
           nextId: null,
           isCorrect: false,
@@ -956,6 +995,16 @@ export default function App() {
     downloadAnchorNode.remove();
   };
 
+  const isValidStatement = (s: any): s is Statement =>
+    typeof s?.id === 'string' &&
+    typeof s?.text === 'string' &&
+    Array.isArray(s?.options) &&
+    s.options.every((o: any) =>
+      typeof o?.id === 'string' &&
+      typeof o?.text === 'string' &&
+      typeof o?.isCorrect === 'boolean'
+    );
+
   const importConfig = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -963,7 +1012,9 @@ export default function App() {
     reader.onload = (event) => {
       try {
         const json = JSON.parse(event.target?.result as string);
-        if (!Array.isArray(json)) throw new Error('Invalid format');
+        if (!Array.isArray(json) || !json.every(isValidStatement)) {
+          throw new Error('Invalid format');
+        }
         hasUserEdited.current = true;
         setStatements(json);
       } catch (err) {
@@ -977,28 +1028,43 @@ export default function App() {
 
   const createRipple = (x: number, y: number) => {
     playSound('ripple');
-    const layer = document.getElementById('bg-animation-layer');
-    if (!layer) return;
-    const ripple = document.createElement('div');
-    ripple.className = 'ripple';
-    ripple.style.left = `${x - 50}px`;
-    ripple.style.top = `${y - 50}px`;
-    layer.appendChild(ripple);
-    setTimeout(() => ripple.remove(), 600);
+    const id = Date.now();
+    setSparkles(prev => [...prev, { id, x, y }]);
+    setTimeout(() => setSparkles(prev => prev.filter(s => s.id !== id)), 600);
   };
 
-  function handleOptionSelect(option: Option) {
-    console.log("Clicked:", option);
+  function handleOptionSelect(option: Option, e: React.MouseEvent) {
+    if (!option.isCorrect && option.camoOption && !camoRevealed[option.id]) {
+      playSound('wrong');
+      setGlitchTargetId(option.id);
+      setIsGlitching(true);
+      setTimeout(() => {
+        setIsGlitching(false);
+        setCamoRevealed(prev => ({ ...prev, [option.id]: true }));
+        setGlitchTargetId(null);
+      }, 500);
+      return;
+    }
+
+    if (!option.isCorrect && (!option.camoOption || camoRevealed[option.id])) {
+      playSound('wrong');
+      setWrongMessage(option.wrongMessage || 'Oops! Try again 🧸');
+      setShowWrongPopup(true);
+      return;
+    }
+
+    createRipple(e.clientX, e.clientY);
+    playSound('click');
 
     if (option.endingId) {
-      const ending = (endings ?? []).find(e => e.id === option.endingId);
+      const foundEnding = (endings ?? []).find(e => e.id === option.endingId);
 
-      if (!ending) {
+      if (!foundEnding) {
         console.error("Ending missing:", option.endingId);
         return;
       }
 
-      setEnding(ending);
+      setCurrentEndingDisplay(foundEnding);
       setEndingActive(true);
       setCurrentStatementId('END');
       return;
@@ -1009,7 +1075,9 @@ export default function App() {
       return;
     }
 
-    console.warn("No nextId or endingId");
+    setCurrentEndingDisplay(ending);
+    setEndingActive(true);
+    setCurrentStatementId('END');
   }
 
   const currentStatement = (statements ?? []).find(s => s.id === currentStatementId) ?? (statements ?? [])[0];
@@ -1040,6 +1108,21 @@ export default function App() {
       <div className="min-h-screen flex flex-col items-center justify-center bg-background text-text-dark relative overflow-hidden">
         <FloatingElements />
         <LoginScreen onUserLogin={handleUserLogin} />
+      </div>
+    );
+  }
+
+  if (mode === 'admin') {
+    return (
+      <div className="min-h-screen bg-background text-text-dark relative overflow-hidden flex flex-col">
+        <FloatingElements />
+        <div className="flex justify-between items-center p-6 border-b border-secondary/20 bg-white/50 backdrop-blur-md">
+           <h1 className="text-xl font-bold font-heading text-primary">Cute Admin</h1>
+           <Button variant="outline" onClick={handleLogout} className="rounded-full">Logout 🚪</Button>
+        </div>
+        <ScrollArea className="flex-grow">
+          <AdminPanel users={users} onCreateUser={handleCreateUser} onEnterBuilder={handleEnterBuilder} onDeleteUser={handleDeleteUser} />
+        </ScrollArea>
       </div>
     );
   }
@@ -1157,29 +1240,6 @@ export default function App() {
             </div>
           </motion.div>
         </motion.div>
-      </div>
-    );
-  }
-
-  if (mode === 'admin') {
-    return (
-      <div className="min-h-screen bg-background text-text-dark relative overflow-hidden flex flex-col">
-        <FloatingElements />
-        <div className="flex justify-between items-center p-6 border-b border-secondary/20 bg-white/50 backdrop-blur-md">
-           <h1 className="text-xl font-bold font-heading text-primary">Cute Admin</h1>
-           <Button variant="outline" onClick={handleLogout} className="rounded-full">Logout 🚪</Button>
-        </div>
-        <ScrollArea className="flex-grow">
-          <AdminPanel users={users} onCreateUser={handleCreateUser} onEnterBuilder={handleEnterBuilder} onDeleteUser={handleDeleteUser} />
-        </ScrollArea>
-      </div>
-    );
-  }
-
-  if (!isReady) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-background">
-        <LoadingMessage />
       </div>
     );
   }
@@ -1536,7 +1596,7 @@ export default function App() {
                             return (
                               <Button 
                                 key={opt.id} 
-                                onClick={() => handleOptionSelect(opt)} 
+                                onClick={(e) => handleOptionSelect(opt, e)} 
                                 data-text={displayedOpt.text}
                                 className={cn(
                                   "pill-button min-h-[60px] text-lg bg-premium-gradient transition-all",
@@ -1587,6 +1647,8 @@ export default function App() {
       {/* Modals */}
       <Dialog open={showWrongPopup} onOpenChange={setShowWrongPopup}>
         <DialogContent className="sm:max-w-[400px] rounded-[32px] border-none bg-background p-10 text-center">
+          <DialogTitle className="sr-only">Try Again</DialogTitle>
+          <DialogDescription className="sr-only">The selected option was incorrect.</DialogDescription>
           <p className="text-xl font-bold text-text-dark mb-6">{wrongMessage}</p>
           <Button onClick={() => setShowWrongPopup(false)} className="pill-button bg-premium-gradient w-full">Try again 💖</Button>
         </DialogContent>
@@ -1620,6 +1682,7 @@ export default function App() {
       <Dialog open={showErrorDialog} onOpenChange={setShowErrorDialog}>
         <DialogContent className="sm:max-w-[500px] rounded-[28px] p-10">
           <DialogTitle className="text-2xl font-bold mb-4 text-center">Errors found! ⚠️</DialogTitle>
+          <DialogDescription className="sr-only">Review the errors in your quiz configuration.</DialogDescription>
           <div className="space-y-3 max-h-[300px] overflow-y-auto custom-scrollbar">
             {validationErrors.map((err, i) => (
                <div 
@@ -1653,6 +1716,7 @@ export default function App() {
         <DialogContent className="p-10 text-center rounded-[28px]">
           <Trash2 className="w-12 h-12 text-accent mx-auto mb-4" />
           <DialogTitle className="text-2xl font-bold mb-6">Delete this statement?</DialogTitle>
+          <DialogDescription className="sr-only">Confirm if you want to permanently delete this statement.</DialogDescription>
           <div className="flex gap-4">
             <Button variant="outline" onClick={() => setStatementToDelete(null)} className="flex-1 rounded-full">Cancel</Button>
             <Button onClick={() => { deleteStatement(statementToDelete!); setStatementToDelete(null); }} className="flex-1 rounded-full bg-accent text-white">Delete</Button>

@@ -137,6 +137,8 @@ export const AdminPanel = ({ users, onCreateUser, onEnterBuilder, onDeleteUser }
   const [success, setSuccess] = useState('');
   const [userToDelete, setUserToDelete] = useState<User | null>(null);
 
+  const [revealedPasswords, setRevealedPasswords] = useState<Record<string, boolean>>({});
+
   const handleCreate = (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
@@ -324,7 +326,12 @@ export const AdminPanel = ({ users, onCreateUser, onEnterBuilder, onDeleteUser }
                   </div>
                   <div className="flex flex-col">
                     <span className="font-bold text-lg">{u.name}</span>
-                    <span className="text-[10px] uppercase tracking-wider text-muted-foreground font-bold">Pass: {u.passcode}</span>
+                    <span 
+                      className="text-[10px] uppercase tracking-wider text-muted-foreground font-bold cursor-pointer"
+                      onClick={() => setRevealedPasswords(prev => ({ ...prev, [u.id]: !prev[u.id] }))}
+                    >
+                      Pass: {revealedPasswords[u.id] ? u.passcode : '••••••••'}
+                    </span>
                   </div>
                 </div>
                 <div className="flex gap-2">

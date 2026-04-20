@@ -12,24 +12,13 @@ const firebaseConfig = {
 };
 
 // --- Safety Logic for Vercel/Production ---
-let app: FirebaseApp;
-let auth: Auth;
-let db: Firestore;
-
-const isConfigValid = !!firebaseConfig.apiKey && !!firebaseConfig.projectId;
+export const isConfigValid = !!firebaseConfig.apiKey && !!firebaseConfig.projectId;
 
 if (!isConfigValid) {
   console.error("❌ Firebase Configuration Missing! App will not function correctly.");
   console.warn("Please add VITE_FIREBASE_API_KEY and other vars to your environment/Vercel settings.");
-  
-  // Provide mock interfaces to prevent top-level crashes
-  app = {} as FirebaseApp;
-  auth = {} as Auth;
-  db = {} as Firestore;
-} else {
-  app = !getApps().length ? initializeApp(firebaseConfig) : getApp();
-  auth = getAuth(app);
-  db = getFirestore(app, import.meta.env.VITE_FIREBASE_DATABASE_ID);
 }
 
-export { app, auth, db, isConfigValid };
+export const app = isConfigValid ? (!getApps().length ? initializeApp(firebaseConfig) : getApp()) : null as unknown as FirebaseApp;
+export const auth = isConfigValid ? getAuth(app) : null as unknown as Auth;
+export const db = isConfigValid ? getFirestore(app, import.meta.env.VITE_FIREBASE_DATABASE_ID) : null as unknown as Firestore;

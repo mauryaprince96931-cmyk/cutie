@@ -2,8 +2,6 @@ import { doc, getDoc, updateDoc, collection, query, where, getDocs, setDoc, dele
 import { db } from './firebase';
 import { User } from '../types';
 
-let timeout: ReturnType<typeof setTimeout>;
-
 export const fetchUserData = async (uid: string): Promise<User | null> => {
   const userRef = doc(db, 'users', uid);
   const userDoc = await getDoc(userRef);
@@ -48,26 +46,36 @@ export const fetchAllUsers = async (): Promise<User[]> => {
   return querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as User));
 };
 
+const timeouts = new Map<string, ReturnType<typeof setTimeout>>();
+
 export function saveUserDataDebounced(uid: string, data: any) {
-  clearTimeout(timeout);
+  clearTimeout(timeouts.get(uid));
 
-  timeout = setTimeout(async () => {
-    try {
-      if (!data || !Array.isArray(data.statements)) {
-        console.warn("Invalid data, not saving");
-        return;
-      }
+  timeouts.set(uid, setTimeout(async () => {
+    timeouts.delete(uid);
 
-      const userRef = doc(db, "users", uid);
-
-      await updateDoc(userRef, {
-        data: data
-      });
-
-      console.log("Saved successfully");
-
-    } catch (err) {
-      console.error("Save failed:", err);
+    if (!data || !Array.isArray(data.statements)) {
+      console.warn("Invalid data, not saving");
+      return;
     }
-  }, 500);
+
+    const userRef = doc(db, "users", uid);
+
+    let retries = 0;
+    const attemptSave = async () => {
+      try {
+        await updateDoc(userRef, { data: data });
+        console.log("Saved successfully for", uid);
+      } catch (err: any) {
+        if (err.code === 'unavailable' && retries < 3) {
+          retries++;
+          setTimeout(attemptSave, 1000 * retries); // exponential backoff
+        } else {
+          console.error("Save failed permanently:", err);
+        }
+      }
+    };
+
+    attemptSave();
+  }, 500));
 }
