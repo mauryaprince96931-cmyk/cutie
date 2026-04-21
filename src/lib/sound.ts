@@ -40,7 +40,7 @@ const createNoiseBuffer = () => {
   return buffer;
 };
 
-export const playSound = (type: 'click' | 'correct' | 'wrong' | 'ending' | 'swish' | 'ripple' | 'panel' | 'glitch') => {
+export const playSound = (type: 'click' | 'camo' | 'correct' | 'wrong' | 'ending' | 'swish' | 'ripple' | 'panel' | 'glitch') => {
   if (!isSoundEnabled) return;
   initAudio();
   if (!audioCtx) return;
@@ -49,6 +49,44 @@ export const playSound = (type: 'click' | 'correct' | 'wrong' | 'ending' | 'swis
   const pitchVar = getRandomFloat(0.96, 1.04);
 
   switch (type) {
+    case 'click': {
+      // Super cute "plink"
+      const osc = audioCtx.createOscillator();
+      const gain = audioCtx.createGain();
+      osc.type = 'sine';
+      osc.connect(gain);
+      gain.connect(audioCtx.destination);
+      osc.frequency.setValueAtTime(880 * pitchVar, now);
+      osc.frequency.exponentialRampToValueAtTime(1320 * pitchVar, now + 0.05);
+
+      gain.gain.setValueAtTime(0, now);
+      gain.gain.linearRampToValueAtTime(0.2, now + 0.01);
+      gain.gain.exponentialRampToValueAtTime(0.001, now + 0.15);
+      osc.start(now);
+      osc.stop(now + 0.2);
+      break;
+    }
+
+    case 'camo': {
+      // Dreamy chime "bing~"
+      const playChime = (freq: number) => {
+        const osc = audioCtx!.createOscillator();
+        const gain = audioCtx!.createGain();
+        osc.type = 'triangle';
+        osc.connect(gain);
+        gain.connect(audioCtx!.destination);
+        osc.frequency.value = freq;
+        gain.gain.setValueAtTime(0, now);
+        gain.gain.linearRampToValueAtTime(0.15, now + 0.05);
+        gain.gain.exponentialRampToValueAtTime(0.001, now + 0.4);
+        osc.start(now);
+        osc.stop(now + 0.5);
+      };
+      playChime(1000 * pitchVar);
+      playChime(1500 * pitchVar);
+      break;
+    }
+
     case 'glitch': {
       // Short, chaotic, synthetic "digital glitch" sound
       const noiseBuffer = createNoiseBuffer();

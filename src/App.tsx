@@ -1073,6 +1073,7 @@ export default function App() {
       // Phase 1: Start Glitch
       // Phase 2: Swap text mid-glitch for smooth transition
       setTimeout(() => {
+        playSound('camo');
         setCamoRevealed(prev => ({ ...prev, [option.id]: true }));
       }, 70);
 
@@ -1398,7 +1399,7 @@ export default function App() {
                                   <span className="bg-primary/20 text-accent px-4 py-1 rounded-full text-xs font-bold uppercase tracking-widest">#{index + 1}</span>
                                   <CardTitle className="text-2xl font-heading font-extrabold text-text-dark">Statement</CardTitle>
                                 </div>
-                                <Button variant="ghost" size="icon" onClick={() => setStatementToDelete(statement.id)} className="text-muted-foreground hover:text-accent rounded-full"><Trash2 className="w-5 h-5" /></Button>
+                                <Button variant="ghost" size="icon" onClick={() => setStatementToDelete(statement.id)} className="icon-action rounded-full"><Trash2 className="w-5 h-5" /></Button>
                               </CardHeader>
                               <CardContent className="space-y-6">
                                 <Textarea 
@@ -1417,7 +1418,7 @@ export default function App() {
                                           className="flex-grow font-semibold"
                                           placeholder="Option text..."
                                         />
-                                        <Button variant="ghost" size="icon" onClick={() => deleteOption(statement.id, opt.id)} disabled={statement.options.length <= 2} className="text-accent hover:bg-accent/10"><Trash2 className="w-4 h-4" /></Button>
+                                        <Button variant="ghost" size="icon" onClick={() => deleteOption(statement.id, opt.id)} disabled={statement.options.length <= 2} className="icon-action hover:bg-accent/10"><Trash2 className="w-4 h-4" /></Button>
                                       </div>
                                       <div className="flex flex-wrap items-center gap-4 text-xs font-bold uppercase tracking-wider">
                                         <div className="flex items-center gap-2">
@@ -1632,7 +1633,7 @@ export default function App() {
                                 key={opt.id} 
                                 onClick={(e) => handleOptionSelect(opt, e)} 
                                 className={cn(
-                                  "pill-button min-h-[60px] text-lg bg-premium-gradient transition-all",
+                                  "option-btn min-h-[60px] text-lg border border-secondary/20 transition-all",
                                   glitchTargetId === opt.id && isGlitching && "glitch-lite"
                                 )}
                               >
