@@ -40,7 +40,7 @@ const createNoiseBuffer = () => {
   return buffer;
 };
 
-export const playSound = (type: 'click' | 'correct' | 'wrong' | 'ending' | 'swish' | 'ripple' | 'panel') => {
+export const playSound = (type: 'click' | 'correct' | 'wrong' | 'ending' | 'swish' | 'ripple' | 'panel' | 'glitch') => {
   if (!isSoundEnabled) return;
   initAudio();
   if (!audioCtx) return;
@@ -49,27 +49,46 @@ export const playSound = (type: 'click' | 'correct' | 'wrong' | 'ending' | 'swis
   const pitchVar = getRandomFloat(0.96, 1.04);
 
   switch (type) {
-    case 'click': {
-      // Jelly bounce / candy pop ("bloop")
+    case 'glitch': {
+      // Short, chaotic, synthetic "digital glitch" sound
+      const noiseBuffer = createNoiseBuffer();
+      if (!noiseBuffer) return;
+      
+      const noise = audioCtx.createBufferSource();
+      const noiseFilter = audioCtx.createBiquadFilter();
+      const noiseGain = audioCtx.createGain();
+      
+      noise.buffer = noiseBuffer;
+      noiseFilter.type = 'highpass';
+      noiseFilter.frequency.setValueAtTime(2000, now);
+      
+      noise.connect(noiseFilter);
+      noiseFilter.connect(noiseGain);
+      noiseGain.connect(audioCtx.destination);
+      
+      noiseGain.gain.setValueAtTime(0, now);
+      noiseGain.gain.linearRampToValueAtTime(0.2, now + 0.01);
+      noiseGain.gain.exponentialRampToValueAtTime(0.001, now + 0.1);
+      
+      noise.start(now);
+      noise.stop(now + 0.15);
+      
+      // Add a small pitch-shifted oscillator for "cute" character
       const osc = audioCtx.createOscillator();
-      const gain = audioCtx.createGain();
-      
-      osc.type = 'sine';
-      osc.connect(gain);
-      gain.connect(audioCtx.destination);
-      
-      const startFreq = 600 * pitchVar;
-      osc.frequency.setValueAtTime(startFreq, now);
-      osc.frequency.exponentialRampToValueAtTime(startFreq * 0.3, now + 0.15); // Drop frequency fast
-      
-      gain.gain.setValueAtTime(0, now);
-      gain.gain.linearRampToValueAtTime(0.35, now + 0.02);
-      gain.gain.exponentialRampToValueAtTime(0.001, now + 0.15);
-      
+      const oscGain = audioCtx.createGain();
+      osc.type = 'square';
+      osc.frequency.setValueAtTime(200, now);
+      osc.frequency.exponentialRampToValueAtTime(400, now + 0.05);
+      osc.connect(oscGain);
+      oscGain.connect(audioCtx.destination);
+      oscGain.gain.setValueAtTime(0.05, now);
+      oscGain.gain.exponentialRampToValueAtTime(0.001, now + 0.1);
       osc.start(now);
-      osc.stop(now + 0.2);
+      osc.stop(now + 0.1);
       break;
     }
+    // ... existing cases ...
+
       
     case 'correct': {
       // Mini xylophone melody + sparkle trimmer

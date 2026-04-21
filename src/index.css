@@ -20,6 +20,7 @@
 
   --animate-fade-in: fade-in 0.2s ease-out forwards;
   --animate-scale-in: scale-in 0.15s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+  --animate-wobble: wobble 0.2s ease-in-out;
 
   @keyframes fade-in {
     from { opacity: 0; transform: translateY(4px); }
@@ -29,6 +30,13 @@
   @keyframes scale-in {
     from { opacity: 0; transform: scale(0.95); }
     to { opacity: 1; transform: scale(1); }
+  }
+
+  @keyframes wobble {
+    0%, 100% { transform: translate(0, 0); }
+    25% { transform: translate(-1.5px, -1px); }
+    50% { transform: translate(1.5px, 1px); }
+    75% { transform: translate(-1px, 1.5px); }
   }
 
   @keyframes shake {
@@ -116,8 +124,12 @@
 }
 
 @utility pill-button {
-  @apply rounded-pill px-6 py-4 font-semibold transition-all duration-300 shadow-soft hover:shadow-lg hover:shadow-primary/20 tracking-wide;
+  @apply rounded-pill px-6 py-4 font-semibold transition-all duration-300 shadow-soft hover:shadow-lg hover:shadow-primary/20 hover:animate-wobble active:scale-[0.96] tracking-wide;
   will-change: transform;
+}
+
+@utility option-btn {
+  @apply pill-button;
 }
 
 @utility bg-premium-gradient {
@@ -202,51 +214,62 @@
 }
 
 /* Cute Glitch Effect */
-.camo-glitch {
-  position: relative;
-  animation: cuteGlitch 0.35s ease;
-  filter: brightness(1.1) saturate(1.2);
-  box-shadow: 0 0 12px rgba(255, 143, 171, 0.6);
-  overflow: hidden;
+/* Minimal Glitch Effect */
+.glitch-lite {
+  animation: glitch-wobble 200ms ease-out both, shimmer 200ms linear forwards;
+  background-image: 
+    linear-gradient(135deg, #FFC0CB 0%, #FFDAB9 100%),
+    linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.4), transparent);
+  background-size: 100% 100%, 200% 100%;
+  background-repeat: no-repeat;
+  background-position: center, -200% 0;
+  text-shadow:
+    1px 0 rgba(255, 120, 160, 0.6),
+   -1px 0 rgba(120, 160, 255, 0.6);
 }
 
-.camo-glitch::before,
-.camo-glitch::after {
-  content: attr(data-text);
-  position: absolute;
-  top: 50%;
-  left: 0;
-  width: 100%;
-  transform: translateY(-50%);
-  opacity: 0.6;
+/* Theme-Agnostic Background Fallback */
+.theme-bg-fallback {
+  background: 
+    radial-gradient(circle at 10% 20%, var(--primary) 0%, transparent 40%),
+    radial-gradient(circle at 90% 80%, var(--primary) 0%, transparent 40%);
+  filter: blur(100px);
+  opacity: 0.08;
   pointer-events: none;
+  position: fixed;
+  inset: 0;
+  z-index: -1;
 }
 
-.camo-glitch::before {
-  color: #ff8fab;
-  animation: glitchShift 0.2s ease;
-  transform: translate(-2px, calc(-50% + 1px));
+@keyframes shimmer {
+  to { background-position: center, 200% 0; }
 }
 
-.camo-glitch::after {
-  color: #a0c4ff;
-  animation: glitchShift 0.2s ease reverse;
-  transform: translate(2px, calc(-50% - 1px));
-}
-
-@keyframes cuteGlitch {
-  0% { transform: scale(1); }
-  20% { transform: scale(1.05) rotate(-1deg); }
-  40% { transform: scale(0.98) rotate(1deg); }
-  60% { transform: scale(1.03) rotate(-0.5deg); }
-  80% { transform: scale(1.01); }
-  100% { transform: scale(1); }
-}
-
-@keyframes glitchShift {
-  0% { transform: translate(0, -50%); }
-  50% { transform: translate(3px, calc(-50% - 2px)); }
-  100% { transform: translate(0, -50%); }
+@keyframes glitch-wobble {
+  0% { 
+    transform: translate(0, 0); 
+    text-shadow: none;
+    box-shadow: var(--shadow-premium);
+  }
+  25% { 
+    transform: translate(-2px, -1.5px); 
+    text-shadow: 2px 0 rgba(255, 80, 120, 0.6), -1px 0 rgba(80, 120, 255, 0.6);
+    box-shadow: 2px 0 rgba(255, 80, 120, 0.2), -1px 0 rgba(80, 120, 255, 0.2);
+  }
+  50% { 
+    transform: translate(2px, 1.5px); 
+    text-shadow: -2px 0 rgba(255, 80, 120, 0.6), 2px 0 rgba(80, 120, 255, 0.6);
+    box-shadow: -2px 0 rgba(255, 80, 120, 0.2), 2px 0 rgba(80, 120, 255, 0.2);
+  }
+  75% { 
+    transform: translate(-1px, 1px); 
+    text-shadow: 1px 0 rgba(255, 80, 120, 0.4), -1px 0 rgba(80, 120, 255, 0.4);
+  }
+  100% { 
+    transform: translate(0, 0); 
+    text-shadow: none;
+    box-shadow: var(--shadow-premium);
+  }
 }
 
 /* Sparkle Effect */

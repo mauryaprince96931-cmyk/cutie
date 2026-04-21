@@ -58,9 +58,9 @@ import { EntryMessageDialog } from './components/EntryMessageDialog';
 import { LoginScreen, AdminPanel } from './components/Auth';
 import { Button } from '@/components/ui/button';
 import { onAuthStateChanged } from 'firebase/auth';
-import { auth, isConfigValid, db } from '@/lib/firebase';
+import { auth, db } from '@/lib/firebase';
 import { fetchUserData, createUserData, deleteUserData, saveUserDataDebounced, fetchAllUsers } from '@/lib/db';
-import { doc, onSnapshot } from 'firebase/firestore';
+import { doc, onSnapshot, getDocFromServer } from 'firebase/firestore';
 import { loadSoundPreference, setSoundEnabled, playSound, initAudio } from './lib/sound';
 
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -554,6 +554,8 @@ const FlowView = ({ statements, validationErrors, onEditNode }: FlowViewProps) =
 
 // --- Decorative Components ---
 
+import { ThemeBackground } from './components/ThemeBackground';
+
 const FloatingElements = () => {
   const elements = useMemo(() =>
     [...Array(8)].map((_, i) => ({
@@ -565,7 +567,9 @@ const FloatingElements = () => {
     })), []);
 
   return (
-    <div className="fixed inset-0 pointer-events-none overflow-hidden z-[-1]">
+    <>
+      <ThemeBackground />
+      <div className="fixed inset-0 pointer-events-none overflow-hidden z-[-1]">
       {elements.map((el, i) => (
         <motion.div
           key={i}
@@ -592,12 +596,26 @@ const FloatingElements = () => {
         </motion.div>
       ))}
     </div>
+    </>
   );
 };
 
 // --- Main App ---
 
 export default function App() {
+  useEffect(() => {
+    async function testConnection() {
+      try {
+        await getDocFromServer(doc(db, 'test', 'connection'));
+      } catch (error) {
+        if(error instanceof Error && error.message.includes('the client is offline')) {
+          console.error("Please check your Firebase configuration.");
+        }
+      }
+    }
+    testConnection();
+  }, []);
+
   const [users, setUsers] = useState<User[]>([]);
   const { mode, setMode, currentUser, setCurrentUser, isAdmin, setIsAdmin, currentStatementId, setCurrentStatementId, endingActive, setEndingActive, statements, setStatements, endings, setEndings, ending, setEnding, entryMessage, setEntryMessage, isLoading, setIsLoading, dataLoaded, setDataLoaded } = useAppContext();
   const [builderView, setBuilderView] = useState<BuilderView>('LIST');
@@ -632,18 +650,18 @@ export default function App() {
     const payload = {
       statements,
       endings,
-      entryMessage
+      entryMessage,
+      fallbackEnding: ending
     };
 
-    console.log("Saving:", payload);
+    console.log("Saving payload:", payload);
 
     saveUserDataDebounced(currentUser.id, payload);
 
-  }, [statements, endings, entryMessage, currentUser, mode]);
+  }, [statements, endings, entryMessage, ending, currentUser, mode]);
 
   // Auth state listener
   useEffect(() => {
-    if (!isConfigValid) return;
     
     const unsub = onAuthStateChanged(auth, async (firebaseUser) => {
       if (firebaseUser) {
@@ -687,6 +705,10 @@ export default function App() {
       setEntryMessage(data.data?.entryMessage ?? {
         title: "",
         subtitle: ""
+      });
+      setEnding(data.data?.fallbackEnding ?? {
+        title: "You chose love 💖",
+        subtitle: "I knew you would… 🥺"
       });
 
       hasUserEdited.current = false;
@@ -884,6 +906,7 @@ export default function App() {
           id: crypto.randomUUID(),
           text: 'Option A',
           nextId: null,
+          endingId: null,
           isCorrect: true,
           wrongMessage: ''
         },
@@ -891,6 +914,7 @@ export default function App() {
           id: crypto.randomUUID(),
           text: 'Option B',
           nextId: null,
+          endingId: null,
           isCorrect: false,
           wrongMessage: 'Oops! Try again 🧸'
         }
@@ -934,6 +958,7 @@ export default function App() {
           id: crypto.randomUUID(),
           text: `Option ${String.fromCharCode(65 + s.options.length)}`,
           nextId: null,
+          endingId: null,
           isCorrect: false,
           wrongMessage: 'Oops! Try again 🧸'
         };
@@ -1034,21 +1059,43 @@ export default function App() {
   };
 
   function handleOptionSelect(option: Option, e: React.MouseEvent) {
-    if (!option.isCorrect && option.camoOption && !camoRevealed[option.id]) {
-      playSound('wrong');
+    // Determine which option data to use: if camo is enabled and revealed, use camoOption
+    const activeOption = (option.camoEnabled && camoRevealed[option.id] && option.camoOption) 
+      ? { ...option.camoOption, isCorrect: option.camoOption.isCorrect ?? true } 
+      : option;
+
+    // IF in Camo Mode and NOT yet revealed, ALWAYS reveal first
+    if (option.camoEnabled && !camoRevealed[option.id]) {
+      playSound('click');
       setGlitchTargetId(option.id);
       setIsGlitching(true);
+      
+      // Phase 1: Start Glitch
+      // Phase 2: Swap text mid-glitch for smooth transition
+      setTimeout(() => {
+        setCamoRevealed(prev => ({ ...prev, [option.id]: true }));
+      }, 70);
+
+      // Phase 3: End Glitch
       setTimeout(() => {
         setIsGlitching(false);
-        setCamoRevealed(prev => ({ ...prev, [option.id]: true }));
         setGlitchTargetId(null);
-      }, 500);
+      }, 200);
       return;
     }
 
-    if (!option.isCorrect && (!option.camoOption || camoRevealed[option.id])) {
+    if (!activeOption.isCorrect && (!(activeOption as any).camoOption || camoRevealed[option.id])) {
       playSound('wrong');
-      setWrongMessage(option.wrongMessage || 'Oops! Try again 🧸');
+      
+      // Determine the best message:
+      // 1. If camo is enabled, revealed, and has a wrongMessage, use it
+      // 2. Fallback to main option's wrong message if set
+      // 3. Default message
+      const message = 
+        (activeOption as any).wrongMessage !== undefined && (activeOption as any).wrongMessage !== "" ? (activeOption as any).wrongMessage :
+        (option.wrongMessage !== undefined && option.wrongMessage !== "" ? option.wrongMessage : 'Oops! Try again 🧸');
+        
+      setWrongMessage(message);
       setShowWrongPopup(true);
       return;
     }
@@ -1056,11 +1103,11 @@ export default function App() {
     createRipple(e.clientX, e.clientY);
     playSound('click');
 
-    if (option.endingId) {
-      const foundEnding = (endings ?? []).find(e => e.id === option.endingId);
+    if (activeOption.endingId) {
+      const foundEnding = (endings ?? []).find(e => e.id === activeOption.endingId);
 
       if (!foundEnding) {
-        console.error("Ending missing:", option.endingId);
+        console.error("Ending missing:", activeOption.endingId);
         return;
       }
 
@@ -1070,8 +1117,14 @@ export default function App() {
       return;
     }
 
-    if (option.nextId) {
-      setCurrentStatementId(option.nextId);
+    if (activeOption.nextId) {
+      if (activeOption.nextId === 'END') {
+        setCurrentEndingDisplay(ending);
+        setEndingActive(true);
+        setCurrentStatementId('END');
+      } else {
+        setCurrentStatementId(activeOption.nextId);
+      }
       return;
     }
 
@@ -1083,25 +1136,6 @@ export default function App() {
   const currentStatement = (statements ?? []).find(s => s.id === currentStatementId) ?? (statements ?? [])[0];
 
   // Screen Returns
-  if (!isConfigValid) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-secondary/10 p-4">
-        <div className="bg-white p-8 rounded-3xl shadow-soft border border-secondary/20 max-w-sm w-full text-center space-y-4">
-          <AlertCircle className="w-12 h-12 text-accent mx-auto" />
-          <h1 className="text-2xl font-bold text-primary">Configuration Missing</h1>
-          <p className="text-sm text-muted-foreground font-medium italic">
-            "Firebase environment variables are not set in Vercel."
-          </p>
-          <div className="text-xs bg-secondary/10 p-4 rounded-xl text-left font-mono space-y-1">
-             <p>VITE_FIREBASE_API_KEY</p>
-             <p>VITE_FIREBASE_PROJECT_ID</p>
-             <p>...</p>
-          </div>
-          <p className="text-[10px] opacity-50 font-bold">Check your Vercel Dashboard Settings</p>
-        </div>
-      </div>
-    );
-  }
 
   if (mode === 'login') {
     return (
@@ -1597,13 +1631,23 @@ export default function App() {
                               <Button 
                                 key={opt.id} 
                                 onClick={(e) => handleOptionSelect(opt, e)} 
-                                data-text={displayedOpt.text}
                                 className={cn(
                                   "pill-button min-h-[60px] text-lg bg-premium-gradient transition-all",
-                                  glitchTargetId === opt.id && isGlitching && "camo-glitch"
+                                  glitchTargetId === opt.id && isGlitching && "glitch-lite"
                                 )}
                               >
-                                {displayedOpt.text}
+                                <AnimatePresence mode="wait">
+                                  <motion.span
+                                    key={displayedOpt.text}
+                                    initial={{ opacity: 0, filter: 'blur(4px)', scale: 0.9 }}
+                                    animate={{ opacity: 1, filter: 'blur(0px)', scale: 1 }}
+                                    exit={{ opacity: 0, filter: 'blur(4px)', scale: 1.1 }}
+                                    transition={{ duration: 0.15, ease: "easeOut" }}
+                                    className="flex items-center justify-center w-full h-full"
+                                  >
+                                    {displayedOpt.text}
+                                  </motion.span>
+                                </AnimatePresence>
                               </Button>
                             );
                           })}
@@ -1649,7 +1693,13 @@ export default function App() {
         <DialogContent className="sm:max-w-[400px] rounded-[32px] border-none bg-background p-10 text-center">
           <DialogTitle className="sr-only">Try Again</DialogTitle>
           <DialogDescription className="sr-only">The selected option was incorrect.</DialogDescription>
-          <p className="text-xl font-bold text-text-dark mb-6">{wrongMessage}</p>
+          <motion.div
+            initial={{ scale: 0.9, opacity: 0, y: 10 }}
+            animate={{ scale: 1, opacity: 1, y: 0 }}
+            transition={{ type: "spring", damping: 12, stiffness: 200 }}
+          >
+            <p className="text-xl font-bold text-text-dark mb-6">{wrongMessage}</p>
+          </motion.div>
           <Button onClick={() => setShowWrongPopup(false)} className="pill-button bg-premium-gradient w-full">Try again 💖</Button>
         </DialogContent>
       </Dialog>

@@ -59,12 +59,28 @@ export function saveUserDataDebounced(uid: string, data: any) {
       return;
     }
 
+    const removeUndefined = (obj: any): any => {
+      if (obj === undefined) return null;
+      if (typeof obj !== 'object' || obj === null) return obj;
+      if (Array.isArray(obj)) return obj.map(removeUndefined);
+      
+      const newObj: any = {};
+      for (const key in obj) {
+        if (obj[key] !== undefined) {
+          newObj[key] = removeUndefined(obj[key]);
+        }
+      }
+      return newObj;
+    };
+
+    const cleanData = removeUndefined(data);
+
     const userRef = doc(db, "users", uid);
 
     let retries = 0;
     const attemptSave = async () => {
       try {
-        await updateDoc(userRef, { data: data });
+        await updateDoc(userRef, { data: cleanData });
         console.log("Saved successfully for", uid);
       } catch (err: any) {
         if (err.code === 'unavailable' && retries < 3) {
