@@ -47,6 +47,7 @@ export interface Option {
     wrongMessage?: string;
     nextId?: string | null;
     endingId?: string | null;
+    camoOption?: any; // Allows infinite nesting
   };
 }
 

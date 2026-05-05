@@ -635,7 +635,7 @@ export default function App() {
   const [isExitingLoading, setIsExitingLoading] = useState(false);
   const [statementToDelete, setStatementToDelete] = useState<string | null>(null);
   const [transformedOptions, setTransformedOptions] = useState<Record<string, Option>>({});
-  const [camoRevealed, setCamoRevealed] = useState<Record<string, boolean>>({});
+  const [camoStages, setCamoStages] = useState<Record<string, number>>({});
   const [isGlitching, setIsGlitching] = useState(false);
   const [glitchTargetId, setGlitchTargetId] = useState<string | null>(null);
   const [sparkles, setSparkles] = useState<{id: number, x: number, y: number}[]>([]);
@@ -723,7 +723,7 @@ export default function App() {
 
   useEffect(() => {
     setTransformedOptions({});
-    setCamoRevealed({});
+    setCamoStages({});
     setIsGlitching(false);
     setGlitchTargetId(null);
   }, [currentStatementId]);
@@ -1004,7 +1004,7 @@ export default function App() {
     if (!statements?.[0]) return;
     setCurrentStatementId(statements[0].id);
     setTransformedOptions({});
-    setCamoRevealed({});
+    setCamoStages({});
     setEndingActive(false);
     setMode('test');
     setShowEntryScreen(true);
@@ -1059,13 +1059,25 @@ export default function App() {
   };
 
   function handleOptionSelect(option: Option, e: React.MouseEvent) {
-    // Determine which option data to use: if camo is enabled and revealed, use camoOption
-    const activeOption = (option.camoEnabled && camoRevealed[option.id] && option.camoOption) 
-      ? { ...option.camoOption, isCorrect: option.camoOption.isCorrect ?? true } 
-      : option;
+    // Current stage of reveal (starts at 0)
+    const stage = camoStages[option.id] || 0;
 
-    // IF in Camo Mode and NOT yet revealed, ALWAYS reveal first
-    if (option.camoEnabled && !camoRevealed[option.id]) {
+    // Helper to get option at specific stage and maximum possible stage
+    const getOptionAtStageAndDepth = (opt: any, currentStage: number): { option: any, depth: number } => {
+      let depth = 0;
+      let currentOpt = opt;
+      while (currentOpt.camoOption && depth < currentStage) {
+        currentOpt = currentOpt.camoOption;
+        depth++;
+      }
+      return { option: currentOpt, depth };
+    };
+
+    const { option: activeOption, depth: actualStage } = getOptionAtStageAndDepth(option, stage);
+    
+    // IF in Camo Mode and can reveal further
+    // Ensure we actually have a camoOption to reveal
+    if (option.camoEnabled && activeOption.camoOption) {
       playSound('click');
       setGlitchTargetId(option.id);
       setIsGlitching(true);
@@ -1074,7 +1086,8 @@ export default function App() {
       // Phase 2: Swap text mid-glitch for smooth transition
       setTimeout(() => {
         playSound('camo');
-        setCamoRevealed(prev => ({ ...prev, [option.id]: true }));
+        // Only increment if we haven't reached the end (activeOption.camoOption existence check)
+        setCamoStages(prev => ({ ...prev, [option.id]: (prev[option.id] || 0) + 1 }));
       }, 70);
 
       // Phase 3: End Glitch
@@ -1084,8 +1097,12 @@ export default function App() {
       }, 200);
       return;
     }
-
-    if (!activeOption.isCorrect && (!(activeOption as any).camoOption || camoRevealed[option.id])) {
+    
+    // If not in camo mode, or reached end of camo chain, activeOption should be used for further logic
+    // Let's redefine activeOption correctly if it wasn't done above
+    const finalActiveOption = option.camoEnabled ? activeOption : option;
+    
+    if (!finalActiveOption.isCorrect && (!finalActiveOption.camoOption || (camoStages[option.id] || 0) > 0)) {
       playSound('wrong');
       
       // Determine the best message:
@@ -1626,8 +1643,18 @@ export default function App() {
                         <h2 className="text-3xl font-heading font-extrabold text-gradient">{currentStatement.text}</h2>
                         <div className="flex flex-col gap-4">
                           {currentStatement.options.map((opt) => {
-                            const isRevealed = camoRevealed[opt.id];
-                            const displayedOpt = (isRevealed && opt.camoOption) ? { ...opt, ...opt.camoOption, id: opt.id } : opt;
+                            const stage = camoStages[opt.id] || 0;
+                            // Helper to get option at specific stage
+                            const getOptionAtStage = (o: any, s: number): any => {
+                              let depth = 0;
+                              let currentOpt = o;
+                              while (currentOpt.camoOption && depth < s) {
+                                currentOpt = currentOpt.camoOption;
+                                depth++;
+                              }
+                              return currentOpt;
+                            };
+                            const displayedOpt = getOptionAtStage(opt, stage);
                             return (
                               <Button 
                                 key={opt.id} 

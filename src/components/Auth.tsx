@@ -133,7 +133,23 @@ export const AdminPanel = ({ users, onCreateUser, onEnterBuilder, onDeleteUser }
   const [success, setSuccess] = useState('');
   const [userToDelete, setUserToDelete] = useState<User | null>(null);
 
+  const [userToManage, setUserToManage] = useState<User | null>(null);
+  const [managePass, setManagePass] = useState('');
+  const [manageError, setManageError] = useState('');
+
   const [revealedPasswords, setRevealedPasswords] = useState<Record<string, boolean>>({});
+
+  const handleConfirmManage = () => {
+    if (!userToManage) return;
+    if (managePass === userToManage.passcode) {
+      onEnterBuilder(userToManage);
+      setUserToManage(null);
+      setManagePass('');
+      setManageError('');
+    } else {
+      setManageError("Incorrect passcode! 🔒");
+    }
+  };
 
   const handleCreate = (e: React.FormEvent) => {
     e.preventDefault();
@@ -187,23 +203,84 @@ export const AdminPanel = ({ users, onCreateUser, onEnterBuilder, onDeleteUser }
 
   return (
     <div className="p-4 md:p-6 space-y-6 max-w-4xl mx-auto">
+      {/* Manage Confirmation Modal */}
+      <AnimatePresence>
+        {userToManage && (
+          <div className="fixed inset-0 z-[6000] w-screen h-screen">
+            <motion.div 
+              initial={{ opacity: 0 }} 
+              animate={{ opacity: 1 }} 
+              exit={{ opacity: 0 }} 
+              onClick={() => setUserToManage(null)}
+              className="absolute inset-0 bg-black/60 backdrop-blur-sm"
+            />
+            <div className="relative w-full h-full flex items-center justify-center overflow-y-auto p-4">
+              <motion.div 
+                initial={{ scale: 0.9, opacity: 0, y: 20 }}
+                animate={{ scale: 1, opacity: 1, y: 0 }}
+                exit={{ scale: 0.9, opacity: 0, y: 20 }}
+                className="relative bg-white p-8 rounded-[32px] shadow-premium max-w-sm w-full space-y-6 border border-white/50"
+              >
+              <div className="w-16 h-16 bg-primary/10 rounded-full flex items-center justify-center mx-auto">
+                <Key className="w-8 h-8 text-primary" />
+              </div>
+              
+              <div className="space-y-1 text-center">
+                <h3 className="text-2xl font-heading font-extrabold text-primary">Enter "{userToManage.name}" Passcode</h3>
+                <p className="text-muted-foreground text-sm">Please verify the user's passcode to continue.</p>
+              </div>
+
+              <Input 
+                type="password"
+                placeholder="Passcode"
+                value={managePass}
+                onChange={e => setManagePass(e.target.value)}
+                className="rounded-full h-12 text-center"
+              />
+
+              {manageError && (
+                <p className="text-accent text-xs font-bold text-center">{manageError}</p>
+              )}
+
+              <div className="flex gap-3">
+                <Button 
+                  variant="outline" 
+                  onClick={() => { setUserToManage(null); setManagePass(''); setManageError(''); }}
+                  className="flex-1 rounded-full h-12 font-bold"
+                >
+                  Cancel
+                </Button>
+                <Button 
+                  onClick={handleConfirmManage}
+                  className="flex-1 rounded-full h-12 font-bold bg-premium-gradient"
+                >
+                  Enter 🌸
+                </Button>
+              </div>
+            </motion.div>
+          </div>
+        </div>
+        )}
+      </AnimatePresence>
+
       {/* Delete Confirmation Modal */}
       <AnimatePresence>
         {userToDelete && (
-          <div className="fixed inset-0 z-[6000] flex items-center justify-center p-4">
+          <div className="fixed inset-0 z-[6000] w-screen h-screen">
             <motion.div 
               initial={{ opacity: 0 }} 
               animate={{ opacity: 1 }} 
               exit={{ opacity: 0 }} 
               onClick={() => setUserToDelete(null)}
-              className="absolute inset-0 bg-black/40 backdrop-blur-sm"
+              className="absolute inset-0 bg-black/60 backdrop-blur-sm"
             />
-            <motion.div 
-              initial={{ scale: 0.9, opacity: 0, y: 20 }}
-              animate={{ scale: 1, opacity: 1, y: 0 }}
-              exit={{ scale: 0.9, opacity: 0, y: 20 }}
-              className="relative bg-white p-8 rounded-[32px] shadow-premium max-w-sm w-full text-center space-y-6 border border-white/50"
-            >
+            <div className="relative w-full h-full flex items-center justify-center overflow-y-auto p-4">
+              <motion.div 
+                initial={{ scale: 0.9, opacity: 0, y: 20 }}
+                animate={{ scale: 1, opacity: 1, y: 0 }}
+                exit={{ scale: 0.9, opacity: 0, y: 20 }}
+                className="relative bg-white p-8 rounded-[32px] shadow-premium max-w-sm w-full text-center space-y-6 border border-white/50"
+              >
               <div className="w-20 h-20 bg-accent/10 rounded-full flex items-center justify-center mx-auto">
                 <Trash2 className="w-10 h-10 text-accent" />
               </div>
@@ -230,6 +307,7 @@ export const AdminPanel = ({ users, onCreateUser, onEnterBuilder, onDeleteUser }
               </div>
             </motion.div>
           </div>
+        </div>
         )}
       </AnimatePresence>
       <div className="flex items-center justify-between">
@@ -334,7 +412,7 @@ export const AdminPanel = ({ users, onCreateUser, onEnterBuilder, onDeleteUser }
                   <Button 
                     size="sm" 
                     variant="outline"
-                    onClick={() => onEnterBuilder(u)}
+                    onClick={() => setUserToManage(u)}
                     className="rounded-full font-bold text-xs h-9 hover:bg-primary/20"
                   >
                     Manage 🌸
