@@ -49,6 +49,7 @@ export interface Option {
     endingId?: string | null;
     camoOption?: any; // Allows infinite nesting
   };
+  noModeEnabled?: boolean;
 }
 
 export interface Statement {

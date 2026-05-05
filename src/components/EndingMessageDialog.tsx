@@ -67,30 +67,30 @@ export const EndingMessageDialog: React.FC<EndingMessageDialogProps> = ({
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent 
-        className="sm:max-w-[550px] rounded-[32px] border-none bg-white p-8 shadow-soft max-h-[85vh] overflow-y-auto custom-scrollbar"
+        className="sm:max-w-[550px] rounded-[24px] border-black/5 bg-white p-8 shadow-xl max-h-[85vh] overflow-y-auto custom-scrollbar"
         style={{ willChange: 'transform, opacity' }}
       >
-        <DialogTitle className="text-2xl font-heading font-extrabold text-[#5A3E3B]">Endings Manager 💖</DialogTitle>
+        <DialogTitle className="text-xl font-semibold text-text-dark tracking-tight">Endings Manager</DialogTitle>
         <div className="space-y-8 pt-6">
           
-          <div className="space-y-4 bg-primary/5 p-5 rounded-2xl border border-primary/20">
-            <h3 className="font-bold text-lg text-primary tracking-tight">Global Fallback Ending</h3>
-            <p className="text-xs text-muted-foreground font-semibold">Shows when an option's 'Next' is set to 'End 🏁' and no specific ending is selected.</p>
+          <div className="space-y-4 bg-bg-soft/40 p-5 rounded-2xl border border-black/5">
+            <h3 className="font-bold text-sm text-text-dark/80 uppercase tracking-widest">Global Fallback Ending</h3>
+            <p className="text-xs text-muted-foreground">Shows when an option's 'Next' is set to 'Ending 🏁' and no specific ending is selected.</p>
             <div className="space-y-3">
-              <div>
-                <Label className="text-xs uppercase tracking-widest text-text-dark/60 font-bold">Main Message</Label>
+              <div className="space-y-1.5">
+                <Label className="text-[10px] uppercase tracking-widest text-muted-foreground font-black">Main Message</Label>
                 <Input 
                   value={localEnding.title}
                   onChange={(e) => setLocalEnding({ ...localEnding, title: e.target.value })}
-                  className="stitched-input text-md font-bold mt-1"
+                  className="bg-white border-0 shadow-sm text-md font-semibold h-10 rounded-xl"
                 />
               </div>
-              <div>
-                <Label className="text-xs uppercase tracking-widest text-text-dark/60 font-bold">Optional Sub Message</Label>
+              <div className="space-y-1.5">
+                <Label className="text-[10px] uppercase tracking-widest text-muted-foreground font-black">Optional Sub Message</Label>
                 <Textarea 
                   value={localEnding.subtitle}
                   onChange={(e) => setLocalEnding({ ...localEnding, subtitle: e.target.value })}
-                  className="stitched-input text-sm mt-1"
+                  className="bg-white border-0 shadow-sm text-sm rounded-xl min-h-[80px]"
                 />
               </div>
             </div>
@@ -98,43 +98,43 @@ export const EndingMessageDialog: React.FC<EndingMessageDialogProps> = ({
 
           <div className="space-y-4">
             <div className="flex items-center justify-between">
-              <h3 className="font-bold text-lg text-accent tracking-tight">Custom Endings</h3>
-               <Button onClick={addEnding} size="sm" className="h-8 text-xs font-bold bg-premium-gradient rounded-full">
+              <h3 className="font-bold text-sm text-text-dark/80 uppercase tracking-widest">Custom Endings</h3>
+               <Button onClick={addEnding} size="sm" className="h-8 text-xs font-bold bg-primary text-white rounded-lg shadow-sm hover:brightness-105">
                 <Plus className="w-3 h-3 mr-1" /> Add Ending
                </Button>
             </div>
             
             <div className="space-y-4">
               {localEndings.length === 0 && (
-                <div className="text-center py-6 border-2 border-dashed border-secondary rounded-2xl bg-secondary/10 text-muted-foreground text-sm font-semibold">
-                  No custom endings yet. Create one! ✨
+                <div className="text-center py-8 border border-dashed border-black/10 rounded-2xl bg-black/[0.01] text-muted-foreground text-xs font-medium">
+                  No custom endings yet.
                 </div>
               )}
               {localEndings.map((e, index) => (
-                <div key={e.id} className="relative bg-white border border-secondary/50 rounded-2xl p-4 shadow-sm group hover:border-accent/30 transition-all">
+                <div key={e.id} className="relative bg-white border border-black/5 rounded-2xl p-4 shadow-sm group hover:border-primary/20 transition-all">
                   <Button 
                     variant="ghost" 
                     size="icon" 
                     onClick={() => deleteEnding(e.id)}
-                    className="absolute top-2 right-2 w-7 h-7 text-muted-foreground hover:text-accent hover:bg-accent/10 rounded-full"
+                    className="absolute top-2 right-2 w-7 h-7 text-muted-foreground hover:text-destructive hover:bg-destructive/5 rounded-full"
                   >
                     <Trash2 className="w-3.5 h-3.5" />
                   </Button>
                   <div className="space-y-3 pr-8">
-                     <div>
-                      <Label className="text-[10px] uppercase tracking-widest text-text-dark/60 font-bold">Title (Ending #{index + 1})</Label>
+                     <div className="space-y-1.5">
+                      <Label className="text-[10px] uppercase tracking-widest text-muted-foreground font-black">Title (Ending #{index + 1})</Label>
                       <Input 
                         value={e.title}
                         onChange={(ev) => updateEnding(e.id, { title: ev.target.value })}
-                        className="h-8 text-sm font-bold border-secondary/30 bg-secondary/5 mt-1"
+                        className="h-9 text-sm font-semibold border-black/5 bg-bg-soft/30 rounded-xl"
                       />
                     </div>
-                    <div>
-                      <Label className="text-[10px] uppercase tracking-widest text-text-dark/60 font-bold">Subtitle</Label>
+                    <div className="space-y-1.5">
+                      <Label className="text-[10px] uppercase tracking-widest text-muted-foreground font-black">Subtitle</Label>
                       <Input 
                         value={e.subtitle}
                         onChange={(ev) => updateEnding(e.id, { subtitle: ev.target.value })}
-                        className="h-8 text-xs border-secondary/30 bg-secondary/5 mt-1"
+                        className="h-9 text-xs border-black/5 bg-bg-soft/30 rounded-xl"
                       />
                     </div>
                   </div>
@@ -145,9 +145,9 @@ export const EndingMessageDialog: React.FC<EndingMessageDialogProps> = ({
 
           <Button 
             onClick={handleSave} 
-            className="w-full pill-button bg-premium-gradient font-bold h-12"
+            className="w-full primary-btn font-bold h-12 rounded-[16px]"
           >
-            Save & Close ✨
+            Save All Changes
           </Button>
         </div>
       </DialogContent>

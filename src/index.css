@@ -1,32 +1,30 @@
-@import url('https://fonts.googleapis.com/css2?family=Nunito:wght@700;800&family=Quicksand:wght@400;500;600;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
 @import "tailwindcss";
 
 @theme {
-  --font-sans: "Quicksand", ui-sans-serif, system-ui, sans-serif;
-  --font-heading: "Nunito", sans-serif;
+  --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
+  --font-heading: "Inter", sans-serif;
 
-  --color-primary: #f7a0b8;
-  --color-softPink: #fbb6c4;
-  --color-cream: #fae9d7;
-  --color-base: #faf5ec;
-  --color-secondary: #fbb6c4;
-  --color-bg-main: #faf5ec;
-  --color-bg-soft: #fae9d7;
-  --color-text-dark: #5a3a42;
-  --color-text-primary: #5a3a42;
-  --color-text-secondary: rgba(90, 58, 66, 0.65);
-  --color-text-placeholder: rgba(90, 58, 66, 0.45);
+  --color-primary: #FF8FB1;
+  --color-accent: #BDE0FE;
+  --color-secondary: #CDB4DB;
+  --color-bg-main: #FFF0F6;
+  --color-bg-soft: #FDE2F3;
+  --color-text-dark: #1F1F1F;
+  --color-text-primary: #1F1F1F;
+  --color-text-secondary: rgba(31,31,31,0.7);
+  --color-text-placeholder: rgba(31,31,31,0.4);
   --color-white: #ffffff;
-  --color-card: rgba(255,255,255,0.7);
-  --color-popover: rgba(255,255,255,0.7);
-  --color-muted: #fae9d7;
-  --color-muted-foreground: rgba(90, 58, 66, 0.65);
+  --color-card: rgba(255,255,255,0.85);
+  --color-popover: rgba(255,255,255,0.95);
+  --color-muted: #e9ecef;
+  --color-muted-foreground: rgba(31,31,31,0.7);
   
-  --radius-xl: 20px;
+  --radius-xl: 16px;
   --radius-pill: 999px;
 
-  --shadow-soft: 0 8px 25px rgba(247,160,184,0.2);
-  --shadow-premium: 0 0 10px rgba(255,255,255,0.4), 0 0 20px rgba(247,160,184,0.2);
+  --shadow-soft: 0 8px 24px rgba(0,0,0,0.08), 0 2px 6px rgba(0,0,0,0.04);
+  --shadow-premium: 0 8px 24px rgba(0,0,0,0.08), 0 2px 6px rgba(0,0,0,0.04);
 
   --animate-fade-in: fade-in 0.2s ease-out forwards;
   --animate-scale-in: scale-in 0.15s cubic-bezier(0.22, 1, 0.36, 1) forwards;
@@ -58,45 +56,44 @@
 
 @layer base {
   :root {
-    --primary: #f7a0b8;
-    --secondary: #fbb6c4;
-    --bg-main: #faf5ec;
-    --bg-soft: #fae9d7;
+    --primary: #FF8FB1;
+    --secondary: #CDB4DB;
+    --bg-main: #FFF0F6;
+    --bg-soft: #FDE2F3;
     --white: #ffffff;
-    --text-dark: #5a3a42;
-    --text-primary: #5a3a42;
-    --text-secondary: rgba(90, 58, 66, 0.65);
-    --text-placeholder: rgba(90, 58, 66, 0.45);
-    --primary-rgb: 247, 160, 184;
+    --text-dark: #1F1F1F;
+    --text-primary: #1F1F1F;
+    --text-secondary: rgba(31,31,31,0.7);
+    --text-placeholder: rgba(31,31,31,0.4);
+    --primary-rgb: 255, 143, 177;
 
     --background: var(--bg-main);
     --foreground: var(--text-primary);
-    --card: rgba(255,255,255,0.7);
+    --card: rgba(255,255,255,0.85);
     --card-foreground: var(--text-primary);
-    --popover: rgba(255,255,255,0.7);
+    --popover: rgba(255,255,255,0.95);
     --popover-foreground: var(--text-primary);
     --primary-foreground: #FFFFFF;
     --secondary-foreground: var(--text-primary);
     --muted: var(--bg-soft);
     --muted-foreground: var(--text-secondary);
-    --accent: var(--primary);
-    --accent-foreground: #FFFFFF;
-    --destructive: #F85A6E;
+    --accent: #BDE0FE;
+    --accent-foreground: var(--text-primary);
+    --destructive: #fa5252;
     --destructive-foreground: #FFFFFF;
-    --border: rgba(90, 58, 66, 0.15);
-    --input: var(--bg-soft);
+    --border: 1px solid rgba(255, 255, 255, 0.6);
+    --input: #ffffff;
     --ring: var(--primary);
-    --radius: 20px;
+    --radius: 12px;
   }
 
   body {
     @apply text-text-primary font-sans antialiased;
-    background: linear-gradient(135deg, var(--bg-main), var(--secondary));
-    background-attachment: fixed;
+    background: linear-gradient(135deg, #FFF0F6 0%, #FDE2F3 40%, #F8E8FF 100%);
     min-height: 100vh;
     overflow-x: hidden;
     position: relative;
-    line-height: 1.6;
+    line-height: 1.5;
   }
 
   h1, h2, h3, h4, h5, h6 {
@@ -146,25 +143,37 @@
   color: var(--text-secondary);
 }
 
-@utility scrapbook-card {
-  @apply bg-card rounded-[20px] shadow-soft p-8 transition-all duration-300;
-  backdrop-filter: blur(12px);
-  will-change: transform, opacity;
+@utility glass-card {
+  background: linear-gradient(135deg, rgba(255,255,255,0.9), rgba(255,240,246,0.85));
+  backdrop-filter: blur(8px);
+  border: 1px solid rgba(255, 255, 255, 0.6);
+  @apply rounded-[16px] shadow-sm transition-all duration-200 hover:shadow-md;
 }
 
-@utility pill-button {
-  @apply bg-primary text-white rounded-pill px-6 py-4 font-semibold transition-all duration-300 shadow-soft hover:bg-secondary hover:scale-[1.03] active:scale-[0.96] tracking-wide;
+@utility primary-btn {
+  @apply bg-primary text-white rounded-[12px] px-6 py-3 font-semibold transition-all duration-150 active:scale-[0.96] tracking-tight;
+  box-shadow: 0 4px 12px rgba(255,143,177,0.4);
+  &:hover {
+    background: #ff7aa3;
+  }
   will-change: transform;
 }
 
-@utility option-btn {
-  @apply bg-white text-text-primary rounded-pill px-6 py-4 font-semibold transition-all duration-300 shadow-soft hover:bg-bg-soft active:scale-[0.96] tracking-wide;
+@utility secondary-btn {
+  @apply bg-secondary text-white rounded-[12px] px-6 py-3 font-semibold transition-all duration-150 shadow-sm hover:brightness-105 active:scale-[0.96] tracking-tight;
   will-change: transform;
+}
+
+@utility glass-btn {
+  background: rgba(255, 255, 255, 0.5);
+  backdrop-filter: blur(6px);
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  @apply rounded-[12px] px-6 py-3 font-semibold transition-all duration-150 hover:bg-white/60 active:scale-[0.96];
 }
 
 @utility bg-premium-gradient {
   background: linear-gradient(135deg, var(--primary) 0%, var(--secondary) 100%);
-  @apply text-white shadow-premium border-none;
+  @apply text-white shadow-sm border-none;
 }
 
 @utility drop-shadow-kawaii {
