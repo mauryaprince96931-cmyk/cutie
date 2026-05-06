@@ -3,7 +3,6 @@ import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import { UserPlus, Trash2, Key, User as UserIcon, AlertCircle, CheckCircle2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
@@ -73,62 +72,56 @@ export const LoginScreen = ({ onUserLogin }: { onUserLogin: (user: User) => void
   };
 
   return (
-    <div className="flex flex-col items-center justify-center min-h-screen bg-bg-soft/30 p-6">
-      <motion.div 
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
-        className="glass-card p-8 rounded-[32px] max-w-sm w-full space-y-8"
-      >
+    <div className="flex flex-col items-center justify-center min-h-screen bg-secondary/10 p-4">
+      <div className="bg-white p-8 rounded-3xl shadow-soft border border-secondary/20 max-w-sm w-full space-y-6">
         <div className="text-center space-y-2">
-            <h1 className="text-2xl font-semibold text-text-dark tracking-tight">{isAdminMode ? 'Admin Portal' : 'Cutie Login'}</h1>
-            <p className="text-muted-foreground text-sm font-medium">Please enter your credentials to access the builder.</p>
+            <h1 className="text-3xl font-heading font-extrabold text-primary">{isAdminMode ? 'Admin Login' : 'Login'}</h1>
+            <p className="text-muted-foreground text-sm font-medium">Welcome back, cupcake! 🧁</p>
         </div>
 
         {error && (
             <motion.div 
                 initial={{ opacity: 0, scale: 0.95 }}
                 animate={{ opacity: 1, scale: 1 }}
-                className="bg-destructive/5 border border-destructive/10 p-3 rounded-xl flex items-center gap-3 text-destructive text-xs font-semibold"
+                className="bg-accent/10 border border-accent/20 p-3 rounded-2xl flex items-center gap-3 text-accent text-sm font-bold"
             >
-                <AlertCircle className="w-4 h-4 flex-shrink-0" />
+                <AlertCircle className="w-5 h-5 flex-shrink-0" />
                 {error}
             </motion.div>
         )}
 
         <div className="space-y-4">
-          <div className="space-y-3">
-            {isAdminMode ? (
-              <>
-                <Input placeholder="Admin Email" value={email} onChange={e => setEmail(e.target.value)} className="rounded-xl h-12 bg-white border-black/5" />
-                <Input type="password" placeholder="Passcode" value={adminPass} onChange={e => setAdminPass(e.target.value)} className="rounded-xl h-12 bg-white border-black/5" />
-              </>
-            ) : (
-              <>
-                <Input placeholder="Username" value={name} onChange={e => setName(e.target.value)} className="rounded-xl h-12 bg-white border-black/5" />
-                <Input type="password" placeholder="Passcode" value={pass} onChange={e => setPass(e.target.value)} className="rounded-xl h-12 bg-white border-black/5" />
-              </>
-            )}
-          </div>
+          {isAdminMode ? (
+            <>
+              <Input placeholder="Admin Email" value={email} onChange={e => setEmail(e.target.value)} className="rounded-2xl h-12" />
+              <Input type="password" placeholder="Admin Passcode" value={adminPass} onChange={e => setAdminPass(e.target.value)} className="rounded-2xl h-12" />
+            </>
+          ) : (
+            <>
+              <Input placeholder="Username" value={name} onChange={e => setName(e.target.value)} className="rounded-2xl h-12" />
+              <Input type="password" placeholder="Passcode" value={pass} onChange={e => setPass(e.target.value)} className="rounded-2xl h-12" />
+            </>
+          )}
           
           <Button 
-            className="w-full primary-btn rounded-xl h-12 font-bold text-base shadow-sm" 
+            className="w-full bg-premium-gradient rounded-2xl h-12 font-bold text-lg shadow-premium" 
             onClick={handleLogin}
             disabled={isLoading}
           >
-            {isLoading ? 'Verifying...' : (isAdminMode ? 'Enter Admin Panel' : 'Sign In')}
+            {isLoading ? 'Connecting... ✨' : (isAdminMode ? 'Admin Login 🎀' : 'Login 💖')}
           </Button>
 
           <button 
-            className="w-full text-center text-muted-foreground text-xs font-bold hover:text-primary transition-colors pt-2 uppercase tracking-widest"
+            className="w-full text-center text-primary/60 text-sm font-bold hover:text-primary transition-colors pt-2"
             onClick={() => {
               setIsAdminMode(!isAdminMode);
               setError('');
             }}
           >
-            {isAdminMode ? 'Back to User Login' : "Admin Login"}
+            {isAdminMode ? 'Back to User Login' : "Are you the creator? Admin Login"}
           </button>
         </div>
-      </motion.div>
+      </div>
     </div>
   );
 };
@@ -209,31 +202,32 @@ export const AdminPanel = ({ users, onCreateUser, onEnterBuilder, onDeleteUser }
   };
 
   return (
-    <div className="p-4 md:p-8 space-y-8 max-w-5xl mx-auto min-h-screen">
+    <div className="p-4 md:p-6 space-y-6 max-w-4xl mx-auto">
       {/* Manage Confirmation Modal */}
       <AnimatePresence>
         {userToManage && (
-          <div className="fixed inset-0 z-[6000] flex items-center justify-center p-4">
+          <div className="fixed inset-0 z-[6000] w-screen h-screen">
             <motion.div 
               initial={{ opacity: 0 }} 
               animate={{ opacity: 1 }} 
               exit={{ opacity: 0 }} 
               onClick={() => setUserToManage(null)}
-              className="absolute inset-0 bg-black/40 backdrop-blur-md"
+              className="absolute inset-0 bg-black/60 backdrop-blur-sm"
             />
-            <motion.div 
-              initial={{ scale: 0.95, opacity: 0, y: 10 }}
-              animate={{ scale: 1, opacity: 1, y: 0 }}
-              exit={{ scale: 0.95, opacity: 0, y: 10 }}
-              className="relative bg-white p-8 rounded-[32px] shadow-2xl max-w-sm w-full space-y-6 border border-black/5"
-            >
-              <div className="w-12 h-12 bg-primary/10 rounded-full flex items-center justify-center mx-auto text-primary">
-                <Key className="w-6 h-6" />
+            <div className="relative w-full h-full flex items-center justify-center overflow-y-auto p-4">
+              <motion.div 
+                initial={{ scale: 0.9, opacity: 0, y: 20 }}
+                animate={{ scale: 1, opacity: 1, y: 0 }}
+                exit={{ scale: 0.9, opacity: 0, y: 20 }}
+                className="relative bg-white p-8 rounded-[32px] shadow-premium max-w-sm w-full space-y-6 border border-white/50"
+              >
+              <div className="w-16 h-16 bg-primary/10 rounded-full flex items-center justify-center mx-auto">
+                <Key className="w-8 h-8 text-primary" />
               </div>
               
               <div className="space-y-1 text-center">
-                <h3 className="text-xl font-semibold text-text-dark tracking-tight">Security Check</h3>
-                <p className="text-muted-foreground text-xs font-medium">Please verify the passcode for <b>"{userToManage.name}"</b></p>
+                <h3 className="text-2xl font-heading font-extrabold text-primary">Enter "{userToManage.name}" Passcode</h3>
+                <p className="text-muted-foreground text-sm">Please verify the user's passcode to continue.</p>
               </div>
 
               <Input 
@@ -241,221 +235,200 @@ export const AdminPanel = ({ users, onCreateUser, onEnterBuilder, onDeleteUser }
                 placeholder="Passcode"
                 value={managePass}
                 onChange={e => setManagePass(e.target.value)}
-                className="rounded-xl h-12 text-center bg-bg-soft/30 border-black/5 font-bold tracking-widest"
-                autoFocus
+                className="rounded-full h-12 text-center"
               />
 
               {manageError && (
-                <p className="text-destructive text-xs font-bold text-center bg-destructive/5 py-2 rounded-lg">{manageError}</p>
+                <p className="text-accent text-xs font-bold text-center">{manageError}</p>
               )}
 
               <div className="flex gap-3">
                 <Button 
-                  variant="ghost" 
+                  variant="outline" 
                   onClick={() => { setUserToManage(null); setManagePass(''); setManageError(''); }}
-                  className="flex-1 rounded-xl h-11 font-bold text-sm hover:bg-black/5"
+                  className="flex-1 rounded-full h-12 font-bold"
                 >
-                  Back
+                  Cancel
                 </Button>
                 <Button 
                   onClick={handleConfirmManage}
-                  className="flex-1 rounded-xl h-11 font-bold text-sm primary-btn"
+                  className="flex-1 rounded-full h-12 font-bold bg-premium-gradient"
                 >
-                  Proceed
+                  Enter 🌸
                 </Button>
               </div>
             </motion.div>
           </div>
+        </div>
         )}
       </AnimatePresence>
 
       {/* Delete Confirmation Modal */}
       <AnimatePresence>
         {userToDelete && (
-          <div className="fixed inset-0 z-[6000] flex items-center justify-center p-4">
+          <div className="fixed inset-0 z-[6000] w-screen h-screen">
             <motion.div 
               initial={{ opacity: 0 }} 
               animate={{ opacity: 1 }} 
               exit={{ opacity: 0 }} 
               onClick={() => setUserToDelete(null)}
-              className="absolute inset-0 bg-black/40 backdrop-blur-md"
+              className="absolute inset-0 bg-black/60 backdrop-blur-sm"
             />
-            <motion.div 
-              initial={{ scale: 0.95, opacity: 0, y: 10 }}
-              animate={{ scale: 1, opacity: 1, y: 0 }}
-              exit={{ scale: 0.95, opacity: 0, y: 10 }}
-              className="relative bg-white p-8 rounded-[32px] shadow-2xl max-w-sm w-full text-center space-y-6 border border-black/5"
-            >
-              <div className="w-12 h-12 bg-destructive/10 rounded-full flex items-center justify-center mx-auto text-destructive">
-                <Trash2 className="w-6 h-6" />
+            <div className="relative w-full h-full flex items-center justify-center overflow-y-auto p-4">
+              <motion.div 
+                initial={{ scale: 0.9, opacity: 0, y: 20 }}
+                animate={{ scale: 1, opacity: 1, y: 0 }}
+                exit={{ scale: 0.9, opacity: 0, y: 20 }}
+                className="relative bg-white p-8 rounded-[32px] shadow-premium max-w-sm w-full text-center space-y-6 border border-white/50"
+              >
+              <div className="w-20 h-20 bg-accent/10 rounded-full flex items-center justify-center mx-auto">
+                <Trash2 className="w-10 h-10 text-accent" />
               </div>
               <div className="space-y-2">
-                <h3 className="text-xl font-semibold text-text-dark tracking-tight">Delete User?</h3>
-                <p className="text-muted-foreground text-sm font-medium">
-                  This will permanently remove <b>"{userToDelete.name}"</b> and everything they built.
+                <h3 className="text-2xl font-heading font-extrabold text-primary">Delete User?</h3>
+                <p className="text-muted-foreground font-medium">
+                  This will permanently remove <span className="text-accent font-bold">"{userToDelete.name}"</span> and all their created content. This action cannot be undone.
                 </p>
               </div>
-              <div className="flex gap-3 pt-2">
+              <div className="flex gap-3">
                 <Button 
-                  variant="ghost" 
+                  variant="outline" 
                   onClick={() => setUserToDelete(null)}
-                  className="flex-1 rounded-xl h-11 font-bold text-sm hover:bg-black/5"
+                  className="flex-1 rounded-full h-12 font-bold"
                 >
-                  Keep
+                  Cancel
                 </Button>
                 <Button 
                   onClick={confirmDelete}
-                  className="flex-1 rounded-xl h-11 font-bold text-sm bg-destructive text-white hover:bg-destructive/90 transition-all shadow-sm"
+                  className="flex-1 rounded-full h-12 font-bold bg-accent hover:bg-accent/90 text-white"
                 >
-                  Delete
+                  Delete 🗑️
                 </Button>
               </div>
             </motion.div>
           </div>
+        </div>
         )}
       </AnimatePresence>
-
-      <div className="flex items-center justify-between pb-4 border-b border-black/5">
-        <h1 className="text-2xl font-semibold text-text-dark tracking-tight">Admin Dashboard</h1>
-        <div className="text-[10px] uppercase font-black tracking-widest text-muted-foreground bg-bg-soft px-3 py-1.5 rounded-full">System v2.0</div>
+      <div className="flex items-center justify-between">
+        <h1 className="text-2xl font-heading font-extrabold text-gradient">Admin Dashboard</h1>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-        <div className="lg:col-span-1">
-          <motion.div initial={{ opacity: 0, x: -20 }} animate={{ opacity: 1, x: 0 }}>
-            <Card className="glass-card border-black/5 shadow-xl overflow-hidden rounded-[24px]">
-              <CardHeader className="bg-primary text-white pb-4 pt-5 px-6">
-                <CardTitle className="flex items-center gap-2 text-base font-bold uppercase tracking-wider">
-                  <UserPlus className="w-4 h-4" />
-                  Add New Cutie
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="p-6">
-                <form onSubmit={handleCreate} className="space-y-4">
-                  <div className="space-y-3">
-                    <div className="space-y-1.5">
-                      <Label className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">Username</Label>
-                      <div className="relative">
-                        <UserIcon className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-                        <Input 
-                          placeholder="Unique ID" 
-                          value={name} 
-                          onChange={e => setName(e.target.value)}
-                          className={cn("pl-10 h-10 rounded-xl bg-bg-soft/30 border-black/5", error && !name.trim() && "border-destructive/50")}
-                        />
-                      </div>
-                    </div>
-                    <div className="space-y-1.5">
-                      <Label className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">Passcode (4+ digits)</Label>
-                      <div className="relative">
-                        <Key className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-                        <Input 
-                          placeholder="Secret numbers" 
-                          value={pass} 
-                          onChange={e => setPass(e.target.value)}
-                          className={cn("pl-10 h-10 rounded-xl bg-bg-soft/30 border-black/5", error && !pass.trim() && "border-destructive/50")}
-                        />
-                      </div>
-                    </div>
+      <div className="max-w-sm mx-auto w-full">
+        <Card className="scrapbook-card border-none shadow-premium overflow-hidden">
+          <CardHeader className="bg-premium-gradient text-white pb-3 pt-5 px-5">
+            <CardTitle className="flex items-center gap-2 text-xl">
+              <UserPlus className="w-5 h-5" />
+              Create New Cutie
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="p-4">
+            <form onSubmit={handleCreate} className="space-y-3">
+              <div className="grid grid-cols-1 gap-3">
+                <div className="space-y-1.5">
+                  <div className="relative">
+                    <UserIcon className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                    <Input 
+                      placeholder="New Username" 
+                      value={name} 
+                      onChange={e => setName(e.target.value)}
+                      className={cn("pl-10", error && !name.trim() && "border-accent")}
+                    />
                   </div>
-
-                  {error && (
-                    <motion.div 
-                      initial={{ opacity: 0, y: -5 }} 
-                      animate={{ opacity: 1, y: 0 }} 
-                      className="bg-destructive/5 border border-destructive/10 p-2.5 rounded-xl flex items-center gap-2 text-destructive text-[11px] font-semibold"
-                    >
-                      <AlertCircle className="w-3.5 h-3.5" />
-                      {error}
-                    </motion.div>
-                  )}
-
-                  {success && (
-                    <motion.div 
-                      initial={{ opacity: 0, y: -5 }} 
-                      animate={{ opacity: 1, y: 0 }} 
-                      className="bg-primary/5 border border-primary/10 p-2.5 rounded-xl flex items-center gap-2 text-primary text-[11px] font-semibold"
-                    >
-                      <CheckCircle2 className="w-3.5 h-3.5" />
-                      {success}
-                    </motion.div>
-                  )}
-
-                  <Button 
-                    type="submit" 
-                    className="w-full primary-btn font-bold h-10 text-sm rounded-xl"
-                    disabled={!name.trim() || !pass.trim()}
-                  >
-                    Generate Account
-                  </Button>
-                </form>
-              </CardContent>
-            </Card>
-          </motion.div>
-        </div>
-
-        <div className="lg:col-span-2 space-y-4">
-          <div className="flex items-center justify-between px-2">
-            <h2 className="text-sm font-black uppercase tracking-[0.2em] text-muted-foreground flex items-center gap-3">
-              Users list
-              <span className="h-5 px-2 bg-black/5 text-text-dark rounded text-[10px] flex items-center justify-center font-bold">{users.length}</span>
-            </h2>
-          </div>
-          
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            {users.length === 0 ? (
-              <div className="col-span-full text-center py-20 bg-bg-soft/30 rounded-[32px] border border-dashed border-black/10">
-                <p className="text-muted-foreground text-sm font-medium">No users found. Create your first one!</p>
+                </div>
+                <div className="space-y-1.5">
+                  <div className="relative">
+                    <Key className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                    <Input 
+                      placeholder="New Passcode" 
+                      value={pass} 
+                      onChange={e => setPass(e.target.value)}
+                      className={cn("pl-10", error && !pass.trim() && "border-accent")}
+                    />
+                  </div>
+                </div>
               </div>
-            ) : (
-              users.map((u, i) => (
+
+              {error && (
                 <motion.div 
-                  key={u.id}
-                  initial={{ opacity: 0, y: 10 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{ delay: i * 0.05 }}
+                  initial={{ opacity: 0, y: -5 }} 
+                  animate={{ opacity: 1, y: 0 }} 
+                  className="bg-accent/10 border border-accent/20 p-2 rounded-xl flex items-center gap-2 text-accent text-[11px] font-bold"
                 >
-                  <Card className="glass-card p-5 group flex flex-col gap-5 border-black/5 shadow-sm hover:shadow-md transition-all hover:-translate-y-0.5 rounded-[24px]">
-                    <div className="flex items-center gap-4">
-                      <div className="w-12 h-12 rounded-2xl bg-primary/10 flex items-center justify-center text-primary font-bold text-lg">
-                        {u.name.charAt(0).toUpperCase()}
-                      </div>
-                      <div className="flex flex-col min-w-0">
-                        <span className="font-bold text-text-dark truncate text-base">{u.name}</span>
-                        <div 
-                          className="flex items-center gap-1.5 cursor-pointer group/pass"
-                          onClick={() => setRevealedPasswords(prev => ({ ...prev, [u.id]: !prev[u.id] }))}
-                        >
-                          <Key className="w-2.5 h-2.5 text-muted-foreground" />
-                          <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest group-hover/pass:text-primary transition-colors">
-                            {revealedPasswords[u.id] ? u.passcode : '••••'}
-                          </span>
-                        </div>
-                      </div>
-                    </div>
-                    <div className="flex items-center gap-2 mt-auto">
-                      <Button 
-                        size="sm" 
-                        variant="ghost"
-                        onClick={() => setUserToManage(u)}
-                        className="flex-1 rounded-xl font-bold text-xs h-9 bg-bg-soft text-text-dark hover:bg-black/5"
-                      >
-                        Builder
-                      </Button>
-                      <Button 
-                        size="sm" 
-                        variant="ghost" 
-                        onClick={() => setUserToDelete(u)}
-                        className="w-9 h-9 p-0 text-muted-foreground hover:text-destructive hover:bg-destructive/5 rounded-xl"
-                      >
-                        <Trash2 className="w-4 h-4" />
-                      </Button>
-                    </div>
-                  </Card>
+                  <AlertCircle className="w-3.5 h-3.5" />
+                  {error}
                 </motion.div>
-              ))
-            )}
-          </div>
+              )}
+
+              {success && (
+                <motion.div 
+                  initial={{ opacity: 0, y: -5 }} 
+                  animate={{ opacity: 1, y: 0 }} 
+                  className="bg-highlight/10 border border-highlight/20 p-2 rounded-xl flex items-center gap-2 text-highlight text-[11px] font-bold"
+                >
+                  <CheckCircle2 className="w-3.5 h-3.5" />
+                  {success}
+                </motion.div>
+              )}
+
+              <Button 
+                type="submit" 
+                className="pill-button w-full bg-premium-gradient font-bold h-10 text-sm"
+                disabled={!name.trim() || !pass.trim()}
+              >
+                Add User ✨
+              </Button>
+            </form>
+          </CardContent>
+        </Card>
+      </div>
+
+      <div className="space-y-4">
+        <h2 className="text-xl font-bold px-2 flex items-center gap-2">
+          Registered Users <span className="text-xs bg-primary/20 text-accent px-2 py-0.5 rounded-full">{users.length}</span>
+        </h2>
+        
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          {users.length === 0 ? (
+            <p className="col-span-full text-center py-10 opacity-50 italic">No users found... 🧸</p>
+          ) : (
+            users.map(u => (
+              <Card key={u.id} className="scrapbook-card p-4 flex justify-between items-center group transition-all hover:bg-secondary/5 border-white/50">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-full bg-premium-gradient flex items-center justify-center text-white font-bold">
+                    {u.name.charAt(0).toUpperCase()}
+                  </div>
+                  <div className="flex flex-col">
+                    <span className="font-bold text-lg">{u.name}</span>
+                    <span 
+                      className="text-[10px] uppercase tracking-wider text-muted-foreground font-bold cursor-pointer"
+                      onClick={() => setRevealedPasswords(prev => ({ ...prev, [u.id]: !prev[u.id] }))}
+                    >
+                      Pass: {revealedPasswords[u.id] ? u.passcode : '••••••••'}
+                    </span>
+                  </div>
+                </div>
+                <div className="flex gap-2">
+                  <Button 
+                    size="sm" 
+                    variant="outline"
+                    onClick={() => setUserToManage(u)}
+                    className="rounded-full font-bold text-xs h-9 hover:bg-primary/20"
+                  >
+                    Manage 🌸
+                  </Button>
+                  <Button 
+                    size="sm" 
+                    variant="ghost" 
+                    onClick={() => setUserToDelete(u)}
+                    className="rounded-full w-9 h-9 p-0 text-muted-foreground hover:text-accent"
+                  >
+                    <Trash2 className="w-4 h-4" />
+                  </Button>
+                </div>
+              </Card>
+            ))
+          )}
         </div>
       </div>
     </div>

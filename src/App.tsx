@@ -24,8 +24,6 @@ import {
   Plus as PlusIcon,
   Edit2,
   ChevronRight,
-  ChevronDown,
-  ChevronUp,
   BookOpen,
   LayoutList,
   GitBranch,
@@ -35,7 +33,8 @@ import {
   ZoomOut,
   Maximize,
   Volume2,
-  VolumeX
+  VolumeX,
+  Copy
 } from 'lucide-react';
 import { 
   DndContext, 
@@ -490,13 +489,14 @@ const FlowView = ({ statements, validationErrors, onEditNode }: FlowViewProps) =
                   exit={{ opacity: 0, scale: 0.8 }}
                   transition={{ 
                     type: "spring", 
-                    stiffness: 400, 
-                    damping: 40,
+                    stiffness: 300, 
+                    damping: 30,
                     opacity: { duration: 0.2 }
                   }}
                   drag
                   dragMomentum={false}
-                  onDrag={(_, info) => handleDrag(s.id, info.delta)}
+                  dragElastic={0.1}
+                  onDragEnd={(_, info) => handleDrag(s.id, info.offset)}
                   style={{ 
                     position: 'absolute',
                     top: 0,
@@ -642,25 +642,28 @@ export default function App() {
   const [glitchTargetId, setGlitchTargetId] = useState<string | null>(null);
   const [sparkles, setSparkles] = useState<{id: number, x: number, y: number}[]>([]);
   
-  // UI State
-  const [expandedOptions, setExpandedOptions] = useState<Record<string, boolean>>({});
-
-  // No Mode Runtime State
-  const [noModeClicks, setNoModeClicks] = useState<Record<string, number>>({});
-  const [noModePositions, setNoModePositions] = useState<Record<string, { x: number; y: number }>>({});
-  const [noModeBlasts, setNoModeBlasts] = useState<Record<string, boolean>>({});
+  // Null Runtime State
+  const [nullModeClicks, setNullModeClicks] = useState<Record<string, number>>({});
+  const [nullModePositions, setNullModePositions] = useState<Record<string, { x: number; y: number }>>({});
+  const [nullModeBlasts, setNullModeBlasts] = useState<Record<string, boolean>>({});
+  const [nullModeScales, setNullModeScales] = useState<Record<string, number>>({});
   const viewerContainerRef = useRef<HTMLDivElement>(null);
 
-  // No Mode handlers
-  const handleNoModeMove = (optionId: string) => {
+  // Null handlers
+  const handleNullModeMove = (optionId: string) => {
     if (!viewerContainerRef.current) return;
     const rect = viewerContainerRef.current.getBoundingClientRect();
     const newX = (Math.random() - 0.5) * rect.width * 0.6;
     const newY = (Math.random() - 0.5) * 60;
-    setNoModePositions(prev => ({ 
+    setNullModePositions(prev => ({ 
       ...prev, 
       [optionId]: { x: newX, y: newY } 
     }));
+    playSound('pop');
+    setNullModeScales(prev => ({ ...prev, [optionId]: 0.85 }));
+    setTimeout(() => {
+      setNullModeScales(prev => ({ ...prev, [optionId]: 1 }));
+    }, 150);
   };
 
   const isDeletingRef = useRef(false);
@@ -954,6 +957,27 @@ export default function App() {
     setStatements(updated);
   };
 
+  const duplicateStatement = (id: string) => {
+    hasUserEdited.current = true;
+    const originalStatement = statements?.find(s => s.id === id);
+    if (!originalStatement) return;
+
+    const newStatement: Statement = {
+      ...originalStatement,
+      id: crypto.randomUUID(),
+      text: `${originalStatement.text} (copy)`,
+      options: originalStatement.options.map(opt => ({
+        ...opt,
+        id: crypto.randomUUID(),
+      }))
+    };
+
+    const index = statements?.findIndex(s => s.id === id) ?? -1;
+    const updated = [...(statements ?? [])];
+    updated.splice(index + 1, 0, newStatement);
+    setStatements(updated);
+  };
+
   const updateStatement = (id: string, updates: Partial<Statement>) => {
     hasUserEdited.current = true;
     const updated = (statements ?? []).map(s => s.id === id ? { ...s, ...updates } : s);
@@ -1110,6 +1134,7 @@ export default function App() {
       // Phase 2: Swap text mid-glitch for smooth transition
       setTimeout(() => {
         playSound('camo');
+        playSound('bubble');
         // Only increment if we haven't reached the end (activeOption.camoOption existence check)
         setCamoStages(prev => ({ ...prev, [option.id]: (prev[option.id] || 0) + 1 }));
       }, 70);
@@ -1126,23 +1151,23 @@ export default function App() {
     // Let's redefine activeOption correctly if it wasn't done above
     const finalActiveOption = option.camoEnabled ? activeOption : option;
     
-    // NO MODE logic for wrong answers
-    if (!finalActiveOption.isCorrect && finalActiveOption.noModeEnabled) {
-      const currentClicks = (noModeClicks[option.id] || 0) + 1;
+    // NULL logic for wrong answers
+    if (!finalActiveOption.isCorrect && finalActiveOption.nullModeEnabled) {
+      const currentClicks = (nullModeClicks[option.id] || 0) + 1;
       
       if (currentClicks >= 5) {
-        setNoModeBlasts(prev => ({ ...prev, [option.id]: true }));
+        setNullModeBlasts(prev => ({ ...prev, [option.id]: true }));
         
         setTimeout(() => {
-          setNoModeClicks(prev => ({ ...prev, [option.id]: 0 }));
-          setNoModePositions(prev => ({ ...prev, [option.id]: { x: 0, y: 0 } }));
-          setNoModeBlasts(prev => ({ ...prev, [option.id]: false }));
+          setNullModeClicks(prev => ({ ...prev, [option.id]: 0 }));
+          setNullModePositions(prev => ({ ...prev, [option.id]: { x: 0, y: 0 } }));
+          setNullModeBlasts(prev => ({ ...prev, [option.id]: false }));
         }, 1000);
         return;
       }
 
-      setNoModeClicks(prev => ({ ...prev, [option.id]: currentClicks }));
-      handleNoModeMove(option.id);
+      setNullModeClicks(prev => ({ ...prev, [option.id]: currentClicks }));
+      handleNullModeMove(option.id);
       return;
     }
 
@@ -1404,25 +1429,15 @@ export default function App() {
               >
                 {/* Toolbar */}
                 {builderView === 'LIST' && (
-                  <div className="bg-white/95 backdrop-blur-xl p-4 md:p-6 rounded-[24px] shadow-sm sticky top-6 z-10 border border-black/5 space-y-4">
+                  <div className="bg-white/90 backdrop-blur-md p-5 rounded-[32px] shadow-soft sticky top-4 z-10 border border-white/50 space-y-4">
                     <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-4">
-                        <div className={cn(
-                          "flex items-center gap-2 px-3 py-1 rounded-full text-[11px] font-bold uppercase tracking-wider transition-colors",
-                          validationErrors.length > 0 ? "bg-destructive/10 text-destructive" : "bg-emerald-50 text-emerald-600"
-                        )}>
-                          <div className={cn("w-1.5 h-1.5 rounded-full animate-pulse", validationErrors.length > 0 ? "bg-destructive" : "bg-emerald-500")} />
-                          {validationErrors.length > 0 ? `${validationErrors.length} Errors` : 'Ready to share'}
-                        </div>
-
-                        {/* Save Status */}
-                        <div className="text-[11px] uppercase tracking-widest font-bold text-muted-foreground/60 flex items-center gap-1.5">
-                          {saveStatus === 'SAVING' ? (
-                            <><RotateCcw className="w-3 h-3 animate-spin" /> Saving</>
-                          ) : (
-                            <><Check className="w-3 h-3" /> Saved</>
-                          )}
-                        </div>
+                      <div className={cn(
+                        "flex items-center gap-2 px-4 py-1.5 rounded-full border",
+                        validationErrors.length > 0 ? "bg-accent/5 border-accent/20 text-accent" : "bg-highlight/5 border-highlight/20 text-highlight"
+                      )}>
+                        <span className="text-[10px] font-bold uppercase tracking-widest">
+                          {validationErrors.length > 0 ? `${validationErrors.length} Errors 💔` : 'Ready 💖'}
+                        </span>
                       </div>
                       
                       {(() => {
@@ -1438,209 +1453,213 @@ export default function App() {
                                 }
                             }} 
                             className={cn(
-                              "primary-btn h-10 px-6",
-                              realErrors.length > 0 ? "bg-destructive hover:bg-destructive/90" : "bg-primary"
+                              "pill-button font-bold text-sm px-6 h-10",
+                              realErrors.length > 0 ? "bg-accent text-white" : "bg-premium-gradient"
                             )}
                           >
-                              {realErrors.length > 0 ? `Fix ${realErrors.length} Errors` : 'Run Quiz'}
+                              {realErrors.length > 0 ? `Errors ⚠️ (${realErrors.length})` : 'Finish & Run ▶'}
                           </Button>
                         );
                       })()}
                     </div>
-                    <div className="border-t border-black/[0.03] pt-4">
-                      <BuilderTopPanel 
-                        onExport={exportConfig}
-                        onImport={importConfig}
-                        onOpenIntro={() => setShowEntryDialog(true)}
-                        onOpenEndings={() => setShowEndingModal(true)}
-                        saveStatus={saveStatus}
-                        validationErrors={validationErrors}
-                      />
-                    </div>
+                    <BuilderTopPanel 
+                      onExport={exportConfig}
+                      onImport={importConfig}
+                      onOpenIntro={() => setShowEntryDialog(true)}
+                      onOpenEndings={() => setShowEndingModal(true)}
+                      saveStatus={saveStatus}
+                      validationErrors={validationErrors}
+                    />
                   </div>
                 )}
 
                 {builderView === 'LIST' ? (
-                  <div className="space-y-12 pb-32">
+                  <div className="space-y-6 pb-20">
                     <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
                       <SortableContext items={(statements ?? []).map(s => s.id)} strategy={verticalListSortingStrategy}>
                         {(statements ?? []).map((statement, index) => (
                           <SortableItem key={statement.id} id={statement.id}>
-                            <Card className="bg-white border-0 shadow-sm rounded-[24px] overflow-hidden" id={`statement-${statement.id}`}>
-                              <CardHeader className="p-6 md:p-8 flex flex-row items-center justify-between space-y-0 bg-secondary/5">
-                                <div className="flex items-center gap-4">
-                                  <span className="bg-primary/10 text-primary px-3 py-1 rounded-full text-xs font-black uppercase tracking-widest">#{index + 1}</span>
-                                  <CardTitle className="text-lg font-semibold text-text-dark uppercase tracking-tight">Statement</CardTitle>
+                            <Card className="scrapbook-card relative overflow-hidden" id={`statement-${statement.id}`}>
+                              <CardHeader className="pb-4 flex flex-row items-center justify-between space-y-0">
+                                <div className="flex items-center gap-3">
+                                  <span className="bg-primary/20 text-accent px-4 py-1 rounded-full text-xs font-bold uppercase tracking-widest">#{index + 1}</span>
+                                  <CardTitle className="text-2xl font-heading font-extrabold text-text-dark">Statement</CardTitle>
                                 </div>
-                                <Button variant="ghost" size="icon" onClick={() => setStatementToDelete(statement.id)} className="text-muted-foreground hover:text-destructive transition-colors"><Trash2 className="w-5 h-5" /></Button>
+                                 <div className="flex gap-2">
+                                     <Button variant="ghost" size="icon" onClick={() => duplicateStatement(statement.id)} className="icon-action rounded-full"><Copy className="w-5 h-5" /></Button>
+                                     <Button variant="ghost" size="icon" onClick={() => setStatementToDelete(statement.id)} className="icon-action rounded-full"><Trash2 className="w-5 h-5" /></Button>
+                                 </div>
+
                               </CardHeader>
-                              <CardContent className="p-6 md:p-8 space-y-8">
+                              <CardContent className="space-y-6">
+                                <Textarea 
+                                  value={statement.text}
+                                  onChange={(e) => updateStatement(statement.id, { text: e.target.value })}
+                                  className="stitched-input min-h-[100px] text-lg font-bold"
+                                  placeholder="Question text..."
+                                />
                                 <div className="space-y-4">
-                                  <Label className="text-sm font-medium text-muted-foreground">Question Text</Label>
-                                  <Textarea 
-                                    value={statement.text}
-                                    onChange={(e) => updateStatement(statement.id, { text: e.target.value })}
-                                    className="bg-bg-soft/30 border-0 focus-visible:ring-primary/20 min-h-[100px] text-lg font-semibold rounded-[16px] p-4"
-                                    placeholder="What do you want to ask?"
-                                  />
-                                </div>
-                                
-                                <div className="space-y-6">
-                                  <Label className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">Answer Options</Label>
-                                  <div className="border border-black/5 rounded-2xl overflow-hidden bg-white/40">
-                                    {(statement.options ?? []).map((opt, optIdx) => {
-                                      const isExpanded = !!expandedOptions[opt.id];
-                                      return (
-                                        <div key={opt.id} className="group border-b border-black/5 last:border-0 p-4 transition-colors hover:bg-black/[0.02]">
-                                          <div className="flex items-center gap-3">
-                                            <Input 
-                                              value={opt.text} 
-                                              onChange={(e) => updateOption(statement.id, opt.id, { text: e.target.value })}
-                                              className="flex-grow font-medium text-base h-12 bg-white/50 border-0 focus-visible:ring-primary/10 rounded-[12px]"
-                                              placeholder="Type an option..."
+                                  {statement.options.map((opt, optIdx) => (
+                                    <div key={opt.id} className="p-4 rounded-2xl bg-secondary/10 border border-secondary/20 space-y-3">
+                                      <div className="flex items-center gap-3">
+                                        <Input 
+                                          value={opt.text} 
+                                          onChange={(e) => updateOption(statement.id, opt.id, { text: e.target.value })}
+                                          className="flex-grow font-semibold"
+                                          placeholder="Option text..."
+                                        />
+                                        <Button variant="ghost" size="icon" onClick={() => deleteOption(statement.id, opt.id)} disabled={statement.options.length <= 2} className="icon-action hover:bg-accent/10"><Trash2 className="w-4 h-4" /></Button>
+                                      </div>
+                                      <div className="flex flex-wrap items-center gap-4 text-xs font-bold uppercase tracking-wider">
+                                        <div className="flex items-center gap-2">
+                                          <Switch checked={opt.isCorrect} onCheckedChange={(v) => updateOption(statement.id, opt.id, { isCorrect: v, nullModeEnabled: v ? false : opt.nullModeEnabled })} />
+                                          <span>{opt.isCorrect ? 'Correct ✨' : 'Wrong 🧸'}</span>
+                                        </div>
+                                        {!opt.isCorrect && (
+                                          <div className="flex items-center gap-2">
+                                            <Switch 
+                                              checked={!!opt.nullModeEnabled} 
+                                              onCheckedChange={(v) => updateOption(statement.id, opt.id, { nullModeEnabled: v })} 
                                             />
-                                            <Button 
-                                              variant="ghost" 
-                                              size="icon" 
-                                              onClick={() => deleteOption(statement.id, opt.id)} 
-                                              disabled={statement.options.length <= 1} 
-                                              className="w-10 h-10 text-muted-foreground hover:text-destructive hover:bg-destructive/5 rounded-full"
-                                            >
-                                              <Trash2 className="w-4 h-4" />
-                                            </Button>
+                                            <span>Null 😏</span>
                                           </div>
+                                        )}
+                                        <div className="flex items-center gap-2">
+                                            <Switch checked={!!opt.camoEnabled} onCheckedChange={(v) => updateOption(statement.id, opt.id, { camoEnabled: v, camoOption: v ? { text: 'Transformed Text', isCorrect: true, nextId: null, endingId: null } : undefined })} />
+                                            <span>Camo Mode 🧬</span>
+                                        </div>
 
-                                          {/* MIDDLE: Horizontal Toggles */}
-                                          <div className="flex flex-wrap items-center justify-between gap-4 py-1">
-                                            <div className="flex flex-wrap items-center gap-6">
-                                              <div className="flex items-center gap-2">
-                                                <Switch 
-                                                  checked={opt.isCorrect} 
-                                                  onCheckedChange={(v) => updateOption(statement.id, opt.id, { isCorrect: v, noModeEnabled: v ? false : opt.noModeEnabled })} 
-                                                  className="data-[state=checked]:bg-primary"
-                                                />
-                                                <span className="text-sm font-semibold text-text-dark">Correct</span>
-                                              </div>
-                                              
-                                              {!opt.isCorrect && (
-                                                <div className="flex items-center gap-2">
-                                                  <Switch 
-                                                    checked={!!opt.noModeEnabled} 
-                                                    onCheckedChange={(v) => updateOption(statement.id, opt.id, { noModeEnabled: v })} 
+                                        {opt.camoEnabled && opt.camoOption && (
+                                            <div className="w-full p-4 bg-white/50 rounded-xl mt-2 border border-secondary/40 shadow-soft">
+                                                <p className="text-xs font-bold text-primary mb-3">🛠️ Camo Transformed Option Editor</p>
+                                                
+                                                <div className="space-y-3">
+                                                  <Input 
+                                                    value={opt.camoOption.text} 
+                                                    onChange={(e) => {
+                                                        hasUserEdited.current = true;
+                                                        updateOption(statement.id, opt.id, { 
+                                                          camoOption: { ...opt.camoOption!, text: e.target.value }
+                                                        });
+                                                    }} 
+                                                    className="text-sm font-semibold" 
+                                                    placeholder="Ghost option text..." 
                                                   />
-                                                  <span className="text-sm font-semibold text-text-dark">No Mode</span>
-                                                </div>
-                                              )}
-                                              
-                                              <div className="flex items-center gap-2">
-                                                <Switch 
-                                                  checked={!!opt.camoEnabled} 
-                                                  onCheckedChange={(v) => updateOption(statement.id, opt.id, { camoEnabled: v, camoOption: v ? { text: 'Transformed Text', isCorrect: true, nextId: null, endingId: null } : undefined })} 
-                                                />
-                                                <span className="text-sm font-semibold text-text-dark">Camo</span>
-                                              </div>
-                                            </div>
 
-                                            <Button 
-                                              variant="ghost" 
-                                              size="sm" 
-                                              onClick={() => setExpandedOptions(prev => ({ ...prev, [opt.id]: !prev[opt.id] }))}
-                                              className="text-[11px] font-bold uppercase tracking-wider gap-1.5 rounded-lg px-3 h-8 bg-black/5 text-muted-foreground hover:bg-black/10"
-                                            >
-                                              {isExpanded ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
-                                              Logic
-                                            </Button>
-                                          </div>
+                                                  <div className="flex items-center gap-4 bg-white p-3 rounded-lg border border-secondary/20">
+                                                    <div className="flex items-center gap-2">
+                                                      <Switch 
+                                                        checked={opt.camoOption.isCorrect ?? true} 
+                                                        onCheckedChange={(v) => updateOption(statement.id, opt.id, { camoOption: { ...opt.camoOption!, isCorrect: v } })} 
+                                                      />
+                                                      <span className="text-[10px]">{(opt.camoOption.isCorrect ?? true) ? 'Correct ✨' : 'Wrong 🧸'}</span>
+                                                    </div>
 
-                                          {/* BOTTOM: Collapsible Advanced Settings */}
-                                          <AnimatePresence>
-                                            {isExpanded && (
-                                              <motion.div 
-                                                initial={{ height: 0, opacity: 0 }} 
-                                                animate={{ height: 'auto', opacity: 1 }} 
-                                                exit={{ height: 0, opacity: 0 }}
-                                                className="overflow-hidden pt-2"
-                                              >
-                                                <div className="bg-black/[0.02] rounded-xl p-4 space-y-4">
-                                                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                                    <div className="space-y-2">
-                                                      <Label className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">Action Flow</Label>
-                                                      {opt.isCorrect ? (
-                                                        <div className="space-y-2">
+                                                    {(opt.camoOption.isCorrect ?? true) ? (
+                                                      <div className="flex flex-col gap-2 min-w-[140px] flex-grow">
+                                                        <Select 
+                                                          value={opt.camoOption.nextId || 'END'} 
+                                                          onValueChange={(v) => {
+                                                            const nextId = v === 'END' ? null : v;
+                                                            updateOption(statement.id, opt.id, { 
+                                                              camoOption: { ...opt.camoOption!, nextId, endingId: nextId ? null : opt.camoOption!.endingId }
+                                                            });
+                                                          }}
+                                                        >
+                                                          <SelectTrigger className="h-8 text-[11px]"><SelectValue placeholder="Next Step" /></SelectTrigger>
+                                                          <SelectContent className="z-[9999]">
+                                                            <SelectItem value="END">Ending 🏁</SelectItem>
+                                                            {(statements ?? []).filter(s => s.id !== statement.id).map((s, i) => (
+                                                              <SelectItem key={s.id} value={s.id}>
+                                                                Next #{(statements ?? []).indexOf(s) + 1}
+                                                              </SelectItem>
+                                                            ))}
+                                                          </SelectContent>
+                                                        </Select>
+            
+                                                        {/* Specific Ending Selector */}
+                                                        {!opt.camoOption.nextId && (endings ?? []).length > 0 && (
                                                           <Select 
-                                                            value={opt.nextId || 'END'} 
-                                                            onValueChange={(v) => {
-                                                              const nextId = v === 'END' ? null : v;
-                                                              updateOption(statement.id, opt.id, { 
-                                                                nextId,
-                                                                endingId: nextId ? null : opt.endingId
-                                                              });
-                                                            }}
+                                                            value={opt.camoOption.endingId || 'GLOBAL'} 
+                                                            onValueChange={(v) => updateOption(statement.id, opt.id, { camoOption: { ...opt.camoOption!, endingId: v === 'GLOBAL' ? null : v } })}
                                                           >
-                                                            <SelectTrigger className="h-9 bg-white text-xs border-0 shadow-sm"><SelectValue placeholder="Next Step" /></SelectTrigger>
+                                                            <SelectTrigger className="h-7 text-[10px] bg-primary/10 border-primary/20 text-primary">
+                                                              <SelectValue placeholder="Select Ending" />
+                                                            </SelectTrigger>
                                                             <SelectContent className="z-[9999]">
-                                                              <SelectItem value="END">🏁 Ending</SelectItem>
-                                                              {(statements ?? []).filter(s => s.id !== statement.id).map((s, i) => (
-                                                                <SelectItem key={s.id} value={s.id}>
-                                                                  Next #{(statements ?? []).indexOf(s) + 1}
-                                                                </SelectItem>
+                                                              <SelectItem value="GLOBAL">Global Fallback 🏠</SelectItem>
+                                                              {(endings ?? []).map((e) => (
+                                                                <SelectItem key={e.id} value={e.id}>{e.title}</SelectItem>
                                                               ))}
                                                             </SelectContent>
                                                           </Select>
-                      
-                                                          {!opt.nextId && (endings ?? []).length > 0 && (
-                                                            <Select 
-                                                              value={opt.endingId || 'GLOBAL'} 
-                                                              onValueChange={(v) => updateOption(statement.id, opt.id, { endingId: v === 'GLOBAL' ? null : v })}
-                                                            >
-                                                              <SelectTrigger className="h-9 bg-white border-0 shadow-sm text-xs">
-                                                                <SelectValue placeholder="Select Ending" />
-                                                              </SelectTrigger>
-                                                              <SelectContent className="z-[9999]">
-                                                                <SelectItem value="GLOBAL">Default Ending</SelectItem>
-                                                                {(endings ?? []).map((e) => (
-                                                                  <SelectItem key={e.id} value={e.id}>{e.title}</SelectItem>
-                                                                ))}
-                                                              </SelectContent>
-                                                            </Select>
-                                                          )}
-                                                        </div>
-                                                      ) : (
-                                                        <Input 
-                                                          value={opt.wrongMessage ?? ''}
-                                                          onChange={(e) => updateOption(statement.id, opt.id, { wrongMessage: e.target.value })}
-                                                          className="h-9 text-xs bg-white border-0 shadow-sm"
-                                                          placeholder="Wrong answer message..."
-                                                        />
-                                                      )}
-                                                    </div>
-
-                                                    {opt.camoEnabled && opt.camoOption && (
-                                                      <div className="space-y-2">
-                                                        <Label className="text-[10px] font-black uppercase tracking-widest text-primary">Camo Sub-Option</Label>
-                                                        <Input 
-                                                          value={opt.camoOption.text} 
-                                                          onChange={(e) => {
-                                                              hasUserEdited.current = true;
-                                                              updateOption(statement.id, opt.id, { 
-                                                                camoOption: { ...opt.camoOption!, text: e.target.value }
-                                                              });
-                                                          }} 
-                                                          className="h-9 text-xs bg-white border-0 shadow-sm font-bold" 
-                                                          placeholder="Ghost option text..." 
-                                                        />
+                                                        )}
                                                       </div>
+                                                    ) : (
+                                                      <Input 
+                                                        value={opt.camoOption.wrongMessage ?? ''}
+                                                        onChange={(e) => updateOption(statement.id, opt.id, { camoOption: { ...opt.camoOption!, wrongMessage: e.target.value } })}
+                                                        className="h-8 text-xs flex-grow"
+                                                        placeholder="Oops message..."
+                                                      />
                                                     )}
                                                   </div>
                                                 </div>
-                                              </motion.div>
+                                            </div>
+                                        )}
+                                        {opt.isCorrect ? (
+                                          <div className="flex flex-col gap-2 min-w-[140px]">
+                                            <Select 
+                                              value={opt.nextId || 'END'} 
+                                              onValueChange={(v) => {
+                                                const nextId = v === 'END' ? null : v;
+                                                updateOption(statement.id, opt.id, { 
+                                                  nextId,
+                                                  endingId: nextId ? null : opt.endingId
+                                                });
+                                              }}
+                                            >
+                                              <SelectTrigger className="h-8"><SelectValue placeholder="Next Step" /></SelectTrigger>
+                                              <SelectContent className="z-[9999]">
+                                                <SelectItem value="END">Ending 🏁</SelectItem>
+                                                {(statements ?? []).filter(s => s.id !== statement.id).map((s, i) => (
+                                                  <SelectItem key={s.id} value={s.id}>
+                                                    Next #{(statements ?? []).indexOf(s) + 1}
+                                                  </SelectItem>
+                                                ))}
+                                              </SelectContent>
+                                            </Select>
+
+                                            {/* Specific Ending Selector */}
+                                            {!opt.nextId && (endings ?? []).length > 0 && (
+                                              <Select 
+                                                value={opt.endingId || 'GLOBAL'} 
+                                                onValueChange={(v) => updateOption(statement.id, opt.id, { endingId: v === 'GLOBAL' ? null : v })}
+                                              >
+                                                <SelectTrigger className="h-7 text-[10px] font-bold bg-primary/10 border-primary/20 text-primary rounded-lg">
+                                                  <SelectValue placeholder="Select Ending" />
+                                                </SelectTrigger>
+                                                <SelectContent className="z-[9999]">
+                                                  <SelectItem value="GLOBAL">Global Fallback 🏠</SelectItem>
+                                                  {(endings ?? []).map((e) => (
+                                                    <SelectItem key={e.id} value={e.id}>{e.title}</SelectItem>
+                                                  ))}
+                                                </SelectContent>
+                                              </Select>
                                             )}
-                                          </AnimatePresence>
-                                        </div>
-                                      );
-                                    })}
-                                    <Button variant="outline" onClick={() => addOption(statement.id)} className="glass-btn w-full h-12 gap-2 text-primary hover:text-primary/80"><PlusIcon className="w-4 h-4" /> Add Option</Button>
-                                  </div>
+                                          </div>
+                                        ) : (
+                                          <Input 
+                                            value={opt.wrongMessage}
+                                            onChange={(e) => updateOption(statement.id, opt.id, { wrongMessage: e.target.value })}
+                                            className="h-8 flex-grow"
+                                            placeholder="Oops message..."
+                                          />
+                                        )}
+                                      </div>
+                                    </div>
+                                  ))}
+                                  <Button variant="outline" onClick={() => addOption(statement.id)} className="w-full border-dashed border-2"><PlusIcon className="w-4 h-4 mr-2" /> Add Option</Button>
                                 </div>
                               </CardContent>
                             </Card>
@@ -1701,10 +1720,10 @@ export default function App() {
                       )}
                     </motion.div>
                   ) : currentStatement ? (
-                    <motion.div key={currentStatement.id} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -10 }} className="w-full max-w-lg px-4">
-                      <Card className="bg-white/80 backdrop-blur-xl border border-white/40 shadow-xl rounded-[32px] p-8 md:p-12 space-y-10">
-                        <h2 className="text-2xl font-semibold text-text-dark text-center leading-tight tracking-tight">{currentStatement.text}</h2>
-                        <div ref={viewerContainerRef} className="flex flex-col gap-3 relative">
+                    <motion.div key={currentStatement.id} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -10 }} className="w-full max-w-lg">
+                      <Card className="scrapbook-card p-8 md:p-12 space-y-10 shadow-premium">
+                        <h2 className="text-3xl font-heading font-extrabold text-gradient">{currentStatement.text}</h2>
+                        <div ref={viewerContainerRef} className="flex flex-col gap-4 relative">
                           {currentStatement.options.map((opt) => {
                             const stage = camoStages[opt.id] || 0;
                             // Helper to get option at specific stage
@@ -1718,24 +1737,24 @@ export default function App() {
                               return currentOpt;
                             };
                             const displayedOpt = getOptionAtStage(opt, stage);
-                            const pos = noModePositions[opt.id] || { x: 0, y: 0 };
-                            const isBlasting = noModeBlasts[opt.id];
+                            const pos = nullModePositions[opt.id] || { x: 0, y: 0 };
+                            const isBlasting = nullModeBlasts[opt.id];
 
                             return (
                               <motion.div
                                 key={opt.id}
-                                onMouseEnter={opt.noModeEnabled && !opt.isCorrect ? () => handleNoModeMove(opt.id) : undefined}
-                                onTouchStart={opt.noModeEnabled && !opt.isCorrect ? () => handleNoModeMove(opt.id) : undefined}
+                                onMouseEnter={opt.nullModeEnabled && !opt.isCorrect ? () => handleNullModeMove(opt.id) : undefined}
+                                onTouchStart={opt.nullModeEnabled && !opt.isCorrect ? () => handleNullModeMove(opt.id) : undefined}
                                 animate={{ 
                                   x: pos.x, 
                                   y: pos.y,
-                                  scale: isBlasting ? [1, 1.2, 0] : 1,
+                                  scale: isBlasting ? [1, 1.2, 0] : (nullModeScales[opt.id] || 1),
                                   opacity: isBlasting ? [1, 1, 0] : 1
                                 }}
                                 transition={{
-                                  x: opt.noModeEnabled ? { type: "spring", damping: 8, stiffness: 120 } : { duration: 0.2 },
-                                  y: opt.noModeEnabled ? { type: "spring", damping: 8, stiffness: 120 } : { duration: 0.2 },
-                                  scale: { duration: 0.8, ease: "easeOut" },
+                                  x: opt.nullModeEnabled ? { type: "spring", damping: 8, stiffness: 120 } : { duration: 0.2 },
+                                  y: opt.nullModeEnabled ? { type: "spring", damping: 8, stiffness: 120 } : { duration: 0.2 },
+                                  scale: isBlasting ? { duration: 0.8, ease: "easeOut" } : { type: "spring", damping: 10, stiffness: 200 },
                                   opacity: { duration: 0.8, ease: "easeOut" }
                                 }}
                                 className="relative"
@@ -1763,20 +1782,18 @@ export default function App() {
                                 <Button 
                                   onClick={(e) => handleOptionSelect(opt, e)} 
                                   className={cn(
-                                    "w-full min-h-[64px] text-base font-medium rounded-[16px] transition-all duration-200",
-                                    "bg-white border border-black/[0.04] shadow-sm text-text-dark hover:bg-bg-soft/50 hover:shadow-md",
-                                    "active:scale-[0.98]",
+                                    "option-btn w-full min-h-[60px] text-lg border border-secondary/20 transition-all",
                                     glitchTargetId === opt.id && isGlitching && "glitch-lite"
                                   )}
                                 >
                                   <AnimatePresence mode="wait">
                                     <motion.span
                                       key={displayedOpt.text}
-                                      initial={{ opacity: 0, filter: 'blur(4px)', scale: 0.95 }}
+                                      initial={{ opacity: 0, filter: 'blur(4px)', scale: 0.9 }}
                                       animate={{ opacity: 1, filter: 'blur(0px)', scale: 1 }}
-                                      exit={{ opacity: 0, filter: 'blur(4px)', scale: 1.05 }}
-                                      transition={{ duration: 0.2, ease: "easeOut" }}
-                                      className="flex items-center justify-center w-full px-6 text-center"
+                                      exit={{ opacity: 0, filter: 'blur(4px)', scale: 1.1 }}
+                                      transition={{ duration: 0.15, ease: "easeOut" }}
+                                      className="flex items-center justify-center w-full h-full"
                                     >
                                       {displayedOpt.text}
                                     </motion.span>
@@ -1800,39 +1817,13 @@ export default function App() {
       <AnimatePresence>
         {mode === 'builder' && (
           <>
-            <motion.div initial={{ y: 50, opacity: 0 }} animate={{ y: 0, opacity: 1 }} exit={{ y: 50, opacity: 0 }} className="fixed bottom-8 left-1/2 -translate-x-1/2 flex items-center bg-white/90 backdrop-blur-xl p-1.5 rounded-full shadow-lg border border-black/5 z-[5000]">
-                <Button 
-                  variant="ghost" 
-                  onClick={() => setBuilderView('LIST')} 
-                  className={cn(
-                    "rounded-full px-6 h-10 transition-all text-xs font-bold uppercase tracking-wider", 
-                    builderView === 'LIST' ? "bg-primary text-white shadow-sm" : "text-muted-foreground hover:bg-black/5"
-                  )}
-                >
-                  List
-                </Button>
-                <Button 
-                  variant="ghost" 
-                  onClick={() => setBuilderView('FLOW')} 
-                  className={cn(
-                    "rounded-full px-6 h-10 transition-all text-xs font-bold uppercase tracking-wider", 
-                    builderView === 'FLOW' ? "bg-primary text-white shadow-sm" : "text-muted-foreground hover:bg-black/5"
-                  )}
-                >
-                  Flow
-                </Button>
+            <motion.div initial={{ y: 50 }} animate={{ y: 0 }} exit={{ y: 50 }} className="fixed bottom-[calc(20px+env(safe-area-inset-bottom,24px))] left-6 flex bg-white/90 backdrop-blur-md p-1.5 rounded-full shadow-premium border border-primary/20 z-[5000]">
+                <Button variant={builderView === 'LIST' ? 'secondary' : 'ghost'} onClick={() => setBuilderView('LIST')} className={cn("rounded-full px-6", builderView === 'LIST' && "bg-premium-gradient text-white")}>List</Button>
+                <Button variant={builderView === 'FLOW' ? 'secondary' : 'ghost'} onClick={() => setBuilderView('FLOW')} className={cn("rounded-full px-6", builderView === 'FLOW' && "bg-premium-gradient text-white")}>Flow</Button>
             </motion.div>
             {builderView === 'LIST' && (
-                <motion.button 
-                  initial={{ scale: 0, rotate: -45 }} 
-                  animate={{ scale: 1, rotate: 0 }} 
-                  exit={{ scale: 0, rotate: 45 }} 
-                  whileHover={{ scale: 1.05 }}
-                  whileTap={{ scale: 0.95 }}
-                  onClick={addStatement} 
-                  className="fixed bottom-8 right-8 w-14 h-14 bg-primary text-white rounded-full shadow-lg flex items-center justify-center z-[5000] border-4 border-white"
-                >
-                  <PlusIcon className="w-7 h-7" />
+                <motion.button initial={{ scale: 0 }} animate={{ scale: 1 }} exit={{ scale: 0 }} onClick={addStatement} className="fixed bottom-[calc(20px+env(safe-area-inset-bottom,24px))] right-6 w-16 h-16 bg-premium-gradient rounded-full shadow-premium flex items-center justify-center z-[5000] text-white">
+                <PlusIcon className="w-8 h-8" />
                 </motion.button>
             )}
           </>

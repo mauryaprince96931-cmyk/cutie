@@ -40,7 +40,7 @@ const createNoiseBuffer = () => {
   return buffer;
 };
 
-export const playSound = (type: 'click' | 'camo' | 'correct' | 'wrong' | 'ending' | 'swish' | 'ripple' | 'panel' | 'glitch') => {
+export const playSound = (type: 'click' | 'camo' | 'correct' | 'wrong' | 'ending' | 'swish' | 'ripple' | 'panel' | 'glitch' | 'pop' | 'bubble') => {
   if (!isSoundEnabled) return;
   initAudio();
   if (!audioCtx) return;
@@ -49,21 +49,60 @@ export const playSound = (type: 'click' | 'camo' | 'correct' | 'wrong' | 'ending
   const pitchVar = getRandomFloat(0.96, 1.04);
 
   switch (type) {
-    case 'click': {
-      // Super cute "plink"
+    case 'bubble': {
+      // Soft "bloop" or bubble pop
       const osc = audioCtx.createOscillator();
       const gain = audioCtx.createGain();
       osc.type = 'sine';
       osc.connect(gain);
       gain.connect(audioCtx.destination);
-      osc.frequency.setValueAtTime(880 * pitchVar, now);
-      osc.frequency.exponentialRampToValueAtTime(1320 * pitchVar, now + 0.05);
+      osc.frequency.setValueAtTime(400 * pitchVar, now);
+      osc.frequency.exponentialRampToValueAtTime(100 * pitchVar, now + 0.3);
+      gain.gain.setValueAtTime(0, now);
+      gain.gain.linearRampToValueAtTime(0.2, now + 0.02);
+      gain.gain.exponentialRampToValueAtTime(0.001, now + 0.3);
+      osc.start(now);
+      osc.stop(now + 0.3);
+      break;
+    }
+    case 'pop': {
+      // "Kawaii" bubble plop - layered for plushness
+      const playPopTone = (f: number, duration: number, gainVal: number) => {
+        const osc = audioCtx!.createOscillator();
+        const gain = audioCtx!.createGain();
+        osc.type = 'triangle';
+        osc.connect(gain);
+        gain.connect(audioCtx!.destination);
+        osc.frequency.setValueAtTime(f * pitchVar, now);
+        // Quick pitch slide down for "plop"
+        osc.frequency.exponentialRampToValueAtTime(f * pitchVar * 0.6, now + duration);
+
+        gain.gain.setValueAtTime(0, now);
+        gain.gain.linearRampToValueAtTime(gainVal, now + 0.01);
+        gain.gain.exponentialRampToValueAtTime(0.001, now + duration);
+        osc.start(now);
+        osc.stop(now + duration);
+      };
+
+      playPopTone(1200, 0.06, 0.3); // High sparkle
+      playPopTone(600, 0.1, 0.2);   // Low plop
+      break;
+    }
+    case 'click': {
+      // Soft "plop" interaction sound
+      const osc = audioCtx.createOscillator();
+      const gain = audioCtx.createGain();
+      osc.type = 'sine';
+      osc.connect(gain);
+      gain.connect(audioCtx.destination);
+      osc.frequency.setValueAtTime(600 * pitchVar, now);
+      osc.frequency.exponentialRampToValueAtTime(900 * pitchVar, now + 0.05);
 
       gain.gain.setValueAtTime(0, now);
-      gain.gain.linearRampToValueAtTime(0.2, now + 0.01);
-      gain.gain.exponentialRampToValueAtTime(0.001, now + 0.15);
+      gain.gain.linearRampToValueAtTime(0.15, now + 0.02);
+      gain.gain.exponentialRampToValueAtTime(0.001, now + 0.1);
       osc.start(now);
-      osc.stop(now + 0.2);
+      osc.stop(now + 0.15);
       break;
     }
 
