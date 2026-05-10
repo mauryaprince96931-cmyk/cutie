@@ -28,7 +28,6 @@ export const EntryMessageDialog: React.FC<EntryMessageDialogProps> = ({
 
   useEffect(() => {
     if (open) {
-      playSound('panel');
       setLocalEntry(entryMessage);
     }
   }, [open, entryMessage]);

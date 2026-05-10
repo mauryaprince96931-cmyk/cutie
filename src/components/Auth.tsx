@@ -300,9 +300,10 @@ export const AdminPanel = ({ users, onCreateUser, onEnterBuilder, onDeleteUser }
                 </Button>
                 <Button 
                   onClick={confirmDelete}
-                  className="flex-1 rounded-full h-12 font-bold bg-accent hover:bg-accent/90 text-white"
+                  className="flex-1 rounded-full h-12 font-bold bg-red-500 hover:bg-red-600 text-white flex items-center justify-center gap-2"
                 >
-                  Delete 🗑️
+                  <Trash2 className="w-4 h-4" />
+                  Delete
                 </Button>
               </div>
             </motion.div>

@@ -1,3 +1,15 @@
+/* Admin Mode Overrides */
+.admin-mode .scrapbook-card {
+  backdrop-filter: none !important;
+  background: white !important;
+  border: 1px solid #fbb6c4 !important;
+  box-shadow: none !important;
+}
+.admin-mode .bg-white\/90 {
+  background-color: white !important;
+  backdrop-filter: none !important;
+}
+
 @import url('https://fonts.googleapis.com/css2?family=Nunito:wght@700;800&family=Quicksand:wght@400;500;600;700&display=swap');
 @import "tailwindcss";
 

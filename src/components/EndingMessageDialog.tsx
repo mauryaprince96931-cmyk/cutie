@@ -35,7 +35,6 @@ export const EndingMessageDialog: React.FC<EndingMessageDialogProps> = ({
 
   useEffect(() => {
     if (open) {
-      playSound('panel');
       setLocalEnding(ending);
       setLocalEndings(endings);
     }

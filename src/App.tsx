@@ -649,6 +649,10 @@ export default function App() {
   const [nullModeScales, setNullModeScales] = useState<Record<string, number>>({});
   const viewerContainerRef = useRef<HTMLDivElement>(null);
 
+  const playSoundWithMode = (type: string, options?: { forceBuilder?: boolean }) => {
+    playSound(type, { mode, forceBuilderSound: options?.forceBuilder });
+  };
+
   // Null handlers
   const handleNullModeMove = (optionId: string) => {
     if (!viewerContainerRef.current) return;
@@ -659,7 +663,16 @@ export default function App() {
       ...prev, 
       [optionId]: { x: newX, y: newY } 
     }));
-    playSound('pop');
+    // Skip pop sound for special intro/ending
+    const statement = statements.find(s => s.options.some(o => o.id === optionId));
+    // Check if statement text has 'intro' or 'ending' case insensitively
+    const isSpecialStatement = statement && 
+      (statement.text.toLowerCase().includes('intro') || 
+       statement.text.toLowerCase().includes('ending'));
+    
+    if (!isSpecialStatement) {
+      playSoundWithMode('pop');
+    }
     setNullModeScales(prev => ({ ...prev, [optionId]: 0.85 }));
     setTimeout(() => {
       setNullModeScales(prev => ({ ...prev, [optionId]: 1 }));
@@ -848,7 +861,7 @@ export default function App() {
       setIsExitingLoading(false);
       const randomIndex = Math.floor(Math.random() * LOADING_MESSAGES.length);
       setLoadingText(LOADING_MESSAGES[randomIndex]);
-      playSound('swish');
+      playSoundWithMode('swish');
 
       const baseDelay = 600 + Math.random() * 400; // 600–1000ms
       const delay = Math.max(500, baseDelay); // Min 500ms for quick feel
@@ -918,7 +931,7 @@ export default function App() {
     setSoundEnabled(newState);
     if (newState) {
       initAudio();
-      playSound('click');
+      playSoundWithMode('click');
     }
   };
 
@@ -986,6 +999,13 @@ export default function App() {
 
   const updateOption = (statementId: string, optionId: string, updates: Partial<Option>) => {
     hasUserEdited.current = true;
+    
+    if (updates.nullModeEnabled === false) {
+      setNullModePositions(prev => ({ ...prev, [optionId]: { x: 0, y: 0 } }));
+      setNullModeClicks(prev => ({ ...prev, [optionId]: 0 }));
+      setNullModeBlasts(prev => ({ ...prev, [optionId]: false }));
+    }
+
     const updated = (statements ?? []).map(s => {
       if (s.id === statementId) {
         return {
@@ -1100,7 +1120,7 @@ export default function App() {
   };
 
   const createRipple = (x: number, y: number) => {
-    playSound('ripple');
+    playSoundWithMode('ripple');
     const id = Date.now();
     setSparkles(prev => [...prev, { id, x, y }]);
     setTimeout(() => setSparkles(prev => prev.filter(s => s.id !== id)), 600);
@@ -1126,15 +1146,15 @@ export default function App() {
     // IF in Camo Mode and can reveal further
     // Ensure we actually have a camoOption to reveal
     if (option.camoEnabled && activeOption.camoOption) {
-      playSound('click');
+      playSoundWithMode('click', { forceBuilder: true });
       setGlitchTargetId(option.id);
       setIsGlitching(true);
       
       // Phase 1: Start Glitch
       // Phase 2: Swap text mid-glitch for smooth transition
       setTimeout(() => {
-        playSound('camo');
-        playSound('bubble');
+        playSoundWithMode('camo', { forceBuilder: true });
+        playSoundWithMode('bubble', { forceBuilder: true });
         // Only increment if we haven't reached the end (activeOption.camoOption existence check)
         setCamoStages(prev => ({ ...prev, [option.id]: (prev[option.id] || 0) + 1 }));
       }, 70);
@@ -1172,7 +1192,7 @@ export default function App() {
     }
 
     if (!finalActiveOption.isCorrect && (!finalActiveOption.camoOption || (camoStages[option.id] || 0) > 0)) {
-      playSound('wrong');
+      playSoundWithMode('wrong');
       
       // Determine the best message:
       // 1. If camo is enabled, revealed, and has a wrongMessage, use it
@@ -1188,7 +1208,17 @@ export default function App() {
     }
 
     createRipple(e.clientX, e.clientY);
-    playSound('click');
+
+    // Skip click sound for special intro/ending
+    const statement = statements?.find(s => s.options.some(o => o.id === option.id));
+    // Check if statement text has 'intro' or 'ending' case insensitively
+    const isSpecialStatement = statement && 
+      (statement.text.toLowerCase().includes('intro') || 
+       statement.text.toLowerCase().includes('ending'));
+    
+    if (!isSpecialStatement) {
+      playSoundWithMode('click');
+    }
 
     if (activeOption.endingId) {
       const foundEnding = (endings ?? []).find(e => e.id === activeOption.endingId);
@@ -1366,7 +1396,7 @@ export default function App() {
   }
 
   return (
-    <div className="min-h-screen relative overflow-x-hidden bg-background">
+    <div className={cn("min-h-screen relative overflow-x-hidden bg-background", mode === 'builder' && "admin-mode")}>
       <div className="bg-animation-layer fixed inset-0 pointer-events-none" id="bg-animation-layer" />
       <div className="relative z-10 p-4 md:p-8 pb-24 flex flex-col items-center">
         <FloatingElements />
@@ -1704,7 +1734,7 @@ export default function App() {
                       <Button 
                         onClick={() => {
                           setShowEntryScreen(false);
-                          playSound('swish');
+                          playSoundWithMode('swish');
                         }} 
                         className="pill-button bg-premium-gradient px-12 h-14 text-xl font-bold shadow-premium scale-110 hover:scale-115 transition-transform"
                       >
@@ -1746,14 +1776,14 @@ export default function App() {
                                 onMouseEnter={opt.nullModeEnabled && !opt.isCorrect ? () => handleNullModeMove(opt.id) : undefined}
                                 onTouchStart={opt.nullModeEnabled && !opt.isCorrect ? () => handleNullModeMove(opt.id) : undefined}
                                 animate={{ 
-                                  x: pos.x, 
-                                  y: pos.y,
+                                  x: opt.nullModeEnabled ? pos.x : 0, 
+                                  y: opt.nullModeEnabled ? pos.y : 0,
                                   scale: isBlasting ? [1, 1.2, 0] : (nullModeScales[opt.id] || 1),
                                   opacity: isBlasting ? [1, 1, 0] : 1
                                 }}
                                 transition={{
-                                  x: opt.nullModeEnabled ? { type: "spring", damping: 8, stiffness: 120 } : { duration: 0.2 },
-                                  y: opt.nullModeEnabled ? { type: "spring", damping: 8, stiffness: 120 } : { duration: 0.2 },
+                                  x: opt.nullModeEnabled ? { type: "spring", damping: 8, stiffness: 120 } : { duration: 0 },
+                                  y: opt.nullModeEnabled ? { type: "spring", damping: 8, stiffness: 120 } : { duration: 0 },
                                   scale: isBlasting ? { duration: 0.8, ease: "easeOut" } : { type: "spring", damping: 10, stiffness: 200 },
                                   opacity: { duration: 0.8, ease: "easeOut" }
                                 }}
@@ -1841,7 +1871,7 @@ export default function App() {
 
       {/* Modals */}
       <Dialog open={showWrongPopup} onOpenChange={setShowWrongPopup}>
-        <DialogContent className="sm:max-w-[400px] rounded-[32px] border-none bg-background p-10 text-center">
+        <DialogContent className="sm:max-w-[400px] rounded-[32px] border-4 border-white bg-[#FFF5F7] p-12 text-center shadow-xl">
           <DialogTitle className="sr-only">Try Again</DialogTitle>
           <DialogDescription className="sr-only">The selected option was incorrect.</DialogDescription>
           <motion.div

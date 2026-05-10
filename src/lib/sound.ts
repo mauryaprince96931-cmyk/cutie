@@ -3,6 +3,10 @@
 let audioCtx: AudioContext | null = null;
 let isSoundEnabled = true;
 
+// Anti-spam configuration
+const lastPlayed: Record<string, number> = {};
+const ANTI_SPAM_DELAY_MS = 80;
+
 // Initialize on first user interaction
 export const initAudio = () => {
   if (!audioCtx) {
@@ -28,306 +32,199 @@ export const loadSoundPreference = () => {
 
 const getRandomFloat = (min: number, max: number) => Math.random() * (max - min) + min;
 
-// Helper to create soft white noise
-const createNoiseBuffer = () => {
-  if (!audioCtx) return null;
-  const bufferSize = audioCtx.sampleRate * 2.0; // 2 seconds of noise
-  const buffer = audioCtx.createBuffer(1, bufferSize, audioCtx.sampleRate);
-  const data = buffer.getChannelData(0);
-  for (let i = 0; i < bufferSize; i++) {
-    data[i] = Math.random() * 2 - 1;
+// Sound Generators (New "Builder" Sounds)
+const generatorsBuilder = {
+  softPop: (audioCtx: AudioContext, pitchVar: number, now: number) => {
+    // Soft, cute "pop"
+    const osc = audioCtx.createOscillator();
+    const gain = audioCtx.createGain();
+    osc.type = 'sine';
+    osc.connect(gain);
+    gain.connect(audioCtx.destination);
+    osc.frequency.setValueAtTime(800 * pitchVar, now);
+    osc.frequency.exponentialRampToValueAtTime(1400 * pitchVar, now + 0.05);
+    gain.gain.setValueAtTime(0, now);
+    gain.gain.linearRampToValueAtTime(0.5, now + 0.01);
+    gain.gain.exponentialRampToValueAtTime(0.001, now + 0.1);
+    osc.start(now);
+    osc.stop(now + 0.1);
+  },
+  sparkleChime: (audioCtx: AudioContext, pitchVar: number, now: number) => {
+    // Sparkle "ding"
+    const osc = audioCtx.createOscillator();
+    const gain = audioCtx.createGain();
+    osc.type = 'sine';
+    osc.connect(gain);
+    gain.connect(audioCtx.destination);
+    osc.frequency.setValueAtTime(1500 * pitchVar, now);
+    gain.gain.setValueAtTime(0, now);
+    gain.gain.linearRampToValueAtTime(0.4, now + 0.01);
+    gain.gain.exponentialRampToValueAtTime(0.001, now + 0.3);
+    osc.start(now);
+    osc.stop(now + 0.3);
+  },
+  softBoop: (audioCtx: AudioContext, pitchVar: number, now: number) => {
+    // Soft "boop"
+    const osc = audioCtx.createOscillator();
+    const gain = audioCtx.createGain();
+    osc.type = 'sine';
+    osc.connect(gain);
+    gain.connect(audioCtx.destination);
+    osc.frequency.setValueAtTime(500 * pitchVar, now);
+    osc.frequency.exponentialRampToValueAtTime(300 * pitchVar, now + 0.2);
+    gain.gain.setValueAtTime(0, now);
+    gain.gain.linearRampToValueAtTime(0.4, now + 0.05);
+    gain.gain.exponentialRampToValueAtTime(0.001, now + 0.2);
+    osc.start(now);
+    osc.stop(now + 0.2);
+  },
+  digitalShimmer: (audioCtx: AudioContext, pitchVar: number, now: number) => {
+    // Soft shimmer
+    const osc = audioCtx.createOscillator();
+    const gain = audioCtx.createGain();
+    osc.type = 'triangle';
+    osc.connect(gain);
+    gain.connect(audioCtx.destination);
+    osc.frequency.setValueAtTime(2000 * pitchVar, now);
+    gain.gain.setValueAtTime(0, now);
+    gain.gain.linearRampToValueAtTime(0.2, now + 0.02);
+    gain.gain.exponentialRampToValueAtTime(0.001, now + 0.3);
+    osc.start(now);
+    osc.stop(now + 0.3);
+  },
+  bounce: (audioCtx: AudioContext, pitchVar: number, now: number) => {
+    // Playful bounce
+    const osc = audioCtx.createOscillator();
+    const gain = audioCtx.createGain();
+    osc.type = 'sine';
+    osc.connect(gain);
+    gain.connect(audioCtx.destination);
+    osc.frequency.setValueAtTime(300 * pitchVar, now);
+    osc.frequency.exponentialRampToValueAtTime(500 * pitchVar, now + 0.1);
+    gain.gain.setValueAtTime(0, now);
+    gain.gain.linearRampToValueAtTime(0.4, now + 0.01);
+    gain.gain.exponentialRampToValueAtTime(0.001, now + 0.2);
+    osc.start(now);
+    osc.stop(now + 0.2);
   }
-  return buffer;
 };
 
-export const playSound = (type: 'click' | 'camo' | 'correct' | 'wrong' | 'ending' | 'swish' | 'ripple' | 'panel' | 'glitch' | 'pop' | 'bubble') => {
+// Original "Viewer" Sounds (simplified reconstruction)
+const generatorsViewer = {
+  plink: (audioCtx: AudioContext, pitchVar: number, now: number) => {
+    const osc = audioCtx.createOscillator();
+    const gain = audioCtx.createGain();
+    osc.type = 'sine';
+    osc.frequency.setValueAtTime(880 * pitchVar, now);
+    osc.frequency.exponentialRampToValueAtTime(1320 * pitchVar, now + 0.05);
+    gain.gain.setValueAtTime(0, now);
+    gain.gain.linearRampToValueAtTime(0.2, now + 0.01);
+    gain.gain.exponentialRampToValueAtTime(0.001, now + 0.15);
+    osc.connect(gain);
+    gain.connect(audioCtx.destination);
+    osc.start(now);
+    osc.stop(now + 0.2);
+  },
+  xyloMelody: (audioCtx: AudioContext, pitchVar: number, now: number) => {
+    // Correct sound
+    [523.25, 659.25, 783.99].forEach((f, i) => {
+      const osc = audioCtx.createOscillator();
+      const gain = audioCtx.createGain();
+      osc.type = 'sine';
+      osc.frequency.value = f * pitchVar;
+      gain.gain.setValueAtTime(0, now + i*0.1);
+      gain.gain.linearRampToValueAtTime(0.3, now + i*0.1 + 0.01);
+      gain.gain.exponentialRampToValueAtTime(0.001, now + i*0.1 + 0.4);
+      osc.connect(gain);
+      gain.connect(audioCtx.destination);
+      osc.start(now + i*0.1);
+      osc.stop(now + i*0.1 + 0.5);
+    });
+  },
+  softDescending: (audioCtx: AudioContext, pitchVar: number, now: number) => {
+    // Wrong sound
+    const osc = audioCtx.createOscillator();
+    const gain = audioCtx.createGain();
+    osc.type = 'sine';
+    osc.frequency.setValueAtTime(500 * pitchVar, now);
+    osc.frequency.exponentialRampToValueAtTime(250 * pitchVar, now + 0.35);
+    gain.gain.setValueAtTime(0, now);
+    gain.gain.linearRampToValueAtTime(0.3, now + 0.05);
+    gain.gain.exponentialRampToValueAtTime(0.001, now + 0.4);
+    osc.connect(gain);
+    gain.connect(audioCtx.destination);
+    osc.start(now);
+    osc.stop(now + 0.5);
+  },
+  whoosh: (audioCtx: AudioContext, pitchVar: number, now: number) => {
+    // Simple whoosh
+    const osc = audioCtx.createOscillator();
+    const gain = audioCtx.createGain();
+    osc.type = 'triangle';
+    osc.frequency.setValueAtTime(400, now);
+    osc.frequency.exponentialRampToValueAtTime(1200, now + 0.3);
+    gain.gain.setValueAtTime(0, now);
+    gain.gain.linearRampToValueAtTime(0.2, now + 0.05);
+    gain.gain.exponentialRampToValueAtTime(0.001, now + 0.4);
+    osc.connect(gain);
+    gain.connect(audioCtx.destination);
+    osc.start(now);
+    osc.stop(now + 0.5);
+  }
+};
+
+const soundMapBuilder: Record<string, (audioCtx: AudioContext, pitchVar: number, now: number) => void> = {
+  click: generatorsBuilder.softPop,
+  camo: generatorsBuilder.digitalShimmer,
+  correct: generatorsBuilder.sparkleChime,
+  wrong: generatorsViewer.softDescending,
+  ending: generatorsBuilder.sparkleChime,
+  swish: generatorsBuilder.bounce,
+  ripple: generatorsBuilder.bounce,
+  panel: generatorsBuilder.softPop,
+  glitch: generatorsBuilder.digitalShimmer,
+  pop: generatorsBuilder.softPop,
+  bubble: generatorsBuilder.bounce
+};
+
+const soundMapViewer: Record<string, (audioCtx: AudioContext, pitchVar: number, now: number) => void> = {
+  click: generatorsViewer.plink,
+  camo: generatorsBuilder.digitalShimmer, // Protected
+  correct: generatorsViewer.xyloMelody,
+  wrong: generatorsViewer.softDescending,
+  ending: generatorsViewer.xyloMelody,
+  swish: generatorsViewer.whoosh,
+  ripple: generatorsViewer.whoosh,
+  panel: generatorsViewer.plink,
+  glitch: generatorsBuilder.digitalShimmer,
+  pop: generatorsBuilder.softPop, // Protected
+  bubble: generatorsBuilder.bounce // Protected
+};
+
+export const playSound = (type: string, options?: { mode: 'viewer' | 'builder', forceBuilderSound?: boolean }) => {
   if (!isSoundEnabled) return;
+  
+  const now = Date.now();
+  if (lastPlayed[type] && now - lastPlayed[type] < ANTI_SPAM_DELAY_MS) return;
+  lastPlayed[type] = now;
+
   initAudio();
   if (!audioCtx) return;
 
-  const now = audioCtx.currentTime + 0.03; // Soft delay sync (30ms)
+  const audioTime = audioCtx.currentTime + 0.03;
   const pitchVar = getRandomFloat(0.96, 1.04);
-
-  switch (type) {
-    case 'bubble': {
-      // Soft "bloop" or bubble pop
-      const osc = audioCtx.createOscillator();
-      const gain = audioCtx.createGain();
-      osc.type = 'sine';
-      osc.connect(gain);
-      gain.connect(audioCtx.destination);
-      osc.frequency.setValueAtTime(400 * pitchVar, now);
-      osc.frequency.exponentialRampToValueAtTime(100 * pitchVar, now + 0.3);
-      gain.gain.setValueAtTime(0, now);
-      gain.gain.linearRampToValueAtTime(0.2, now + 0.02);
-      gain.gain.exponentialRampToValueAtTime(0.001, now + 0.3);
-      osc.start(now);
-      osc.stop(now + 0.3);
-      break;
-    }
-    case 'pop': {
-      // "Kawaii" bubble plop - layered for plushness
-      const playPopTone = (f: number, duration: number, gainVal: number) => {
-        const osc = audioCtx!.createOscillator();
-        const gain = audioCtx!.createGain();
-        osc.type = 'triangle';
-        osc.connect(gain);
-        gain.connect(audioCtx!.destination);
-        osc.frequency.setValueAtTime(f * pitchVar, now);
-        // Quick pitch slide down for "plop"
-        osc.frequency.exponentialRampToValueAtTime(f * pitchVar * 0.6, now + duration);
-
-        gain.gain.setValueAtTime(0, now);
-        gain.gain.linearRampToValueAtTime(gainVal, now + 0.01);
-        gain.gain.exponentialRampToValueAtTime(0.001, now + duration);
-        osc.start(now);
-        osc.stop(now + duration);
-      };
-
-      playPopTone(1200, 0.06, 0.3); // High sparkle
-      playPopTone(600, 0.1, 0.2);   // Low plop
-      break;
-    }
-    case 'click': {
-      // Soft "plop" interaction sound
-      const osc = audioCtx.createOscillator();
-      const gain = audioCtx.createGain();
-      osc.type = 'sine';
-      osc.connect(gain);
-      gain.connect(audioCtx.destination);
-      osc.frequency.setValueAtTime(600 * pitchVar, now);
-      osc.frequency.exponentialRampToValueAtTime(900 * pitchVar, now + 0.05);
-
-      gain.gain.setValueAtTime(0, now);
-      gain.gain.linearRampToValueAtTime(0.15, now + 0.02);
-      gain.gain.exponentialRampToValueAtTime(0.001, now + 0.1);
-      osc.start(now);
-      osc.stop(now + 0.15);
-      break;
-    }
-
-    case 'camo': {
-      // Dreamy chime "bing~"
-      const playChime = (freq: number) => {
-        const osc = audioCtx!.createOscillator();
-        const gain = audioCtx!.createGain();
-        osc.type = 'triangle';
-        osc.connect(gain);
-        gain.connect(audioCtx!.destination);
-        osc.frequency.value = freq;
-        gain.gain.setValueAtTime(0, now);
-        gain.gain.linearRampToValueAtTime(0.15, now + 0.05);
-        gain.gain.exponentialRampToValueAtTime(0.001, now + 0.4);
-        osc.start(now);
-        osc.stop(now + 0.5);
-      };
-      playChime(1000 * pitchVar);
-      playChime(1500 * pitchVar);
-      break;
-    }
-
-    case 'glitch': {
-      // Short, chaotic, synthetic "digital glitch" sound
-      const noiseBuffer = createNoiseBuffer();
-      if (!noiseBuffer) return;
-      
-      const noise = audioCtx.createBufferSource();
-      const noiseFilter = audioCtx.createBiquadFilter();
-      const noiseGain = audioCtx.createGain();
-      
-      noise.buffer = noiseBuffer;
-      noiseFilter.type = 'highpass';
-      noiseFilter.frequency.setValueAtTime(2000, now);
-      
-      noise.connect(noiseFilter);
-      noiseFilter.connect(noiseGain);
-      noiseGain.connect(audioCtx.destination);
-      
-      noiseGain.gain.setValueAtTime(0, now);
-      noiseGain.gain.linearRampToValueAtTime(0.2, now + 0.01);
-      noiseGain.gain.exponentialRampToValueAtTime(0.001, now + 0.1);
-      
-      noise.start(now);
-      noise.stop(now + 0.15);
-      
-      // Add a small pitch-shifted oscillator for "cute" character
-      const osc = audioCtx.createOscillator();
-      const oscGain = audioCtx.createGain();
-      osc.type = 'square';
-      osc.frequency.setValueAtTime(200, now);
-      osc.frequency.exponentialRampToValueAtTime(400, now + 0.05);
-      osc.connect(oscGain);
-      oscGain.connect(audioCtx.destination);
-      oscGain.gain.setValueAtTime(0.05, now);
-      oscGain.gain.exponentialRampToValueAtTime(0.001, now + 0.1);
-      osc.start(now);
-      osc.stop(now + 0.1);
-      break;
-    }
-    // ... existing cases ...
-
-      
-    case 'correct': {
-      // Mini xylophone melody + sparkle trimmer
-      const playXyloNote = (freq: number, delay: number) => {
-        const osc = audioCtx!.createOscillator();
-        const gain = audioCtx!.createGain();
-        osc.type = 'sine';
-        osc.connect(gain);
-        gain.connect(audioCtx!.destination);
-        osc.frequency.value = freq * pitchVar;
-        
-        gain.gain.setValueAtTime(0, now + delay);
-        gain.gain.linearRampToValueAtTime(0.3, now + delay + 0.01); // Sharp attack
-        gain.gain.exponentialRampToValueAtTime(0.001, now + delay + 0.4);
-        
-        osc.start(now + delay);
-        osc.stop(now + delay + 0.5);
-      };
-
-      // Sparkle shimmer layer
-      const playSparkle = (baseDelay: number) => {
-        for (let i = 0; i < 5; i++) {
-          const osc = audioCtx!.createOscillator();
-          const gain = audioCtx!.createGain();
-          osc.type = 'triangle';
-          osc.connect(gain);
-          gain.connect(audioCtx!.destination);
-          
-          osc.frequency.value = getRandomFloat(2000, 4000);
-          
-          const sDelay = now + baseDelay + i * 0.04;
-          gain.gain.setValueAtTime(0, sDelay);
-          gain.gain.linearRampToValueAtTime(0.05, sDelay + 0.01);
-          gain.gain.exponentialRampToValueAtTime(0.001, sDelay + 0.1);
-          
-          osc.start(sDelay);
-          osc.stop(sDelay + 0.15);
-        }
-      };
-
-      playXyloNote(523.25, 0); // C5
-      playXyloNote(659.25, 0.1); // E5
-      playXyloNote(783.99, 0.2); // G5
-      playSparkle(0.2);
-      break;
-    }
-      
-    case 'wrong': {
-      // Soft descending chime / xylophone / toy tone "doo~"
-      const osc = audioCtx.createOscillator();
-      const gain = audioCtx.createGain();
-      
-      osc.type = 'sine';
-      osc.connect(gain);
-      gain.connect(audioCtx.destination);
-      
-      const startFreq = 500 * pitchVar;
-      osc.frequency.setValueAtTime(startFreq, now);
-      osc.frequency.exponentialRampToValueAtTime(startFreq * 0.5, now + 0.35); // Gentle slide down
-      
-      gain.gain.setValueAtTime(0, now);
-      gain.gain.linearRampToValueAtTime(0.3, now + 0.05); // Faster soft attack
-      gain.gain.exponentialRampToValueAtTime(0.001, now + 0.4); // Fade out
-      
-      osc.start(now);
-      osc.stop(now + 0.5);
-      break;
-    }
-      
-    case 'ending': {
-      // Music box mini melody 🎠
-      const playMusicBoxNote = (freq: number, delay: number) => {
-        const osc = audioCtx!.createOscillator();
-        const gain = audioCtx!.createGain();
-        osc.type = 'sine';
-        osc.connect(gain);
-        gain.connect(audioCtx!.destination);
-        osc.frequency.value = freq * pitchVar;
-        
-        gain.gain.setValueAtTime(0, now + delay);
-        gain.gain.linearRampToValueAtTime(0.2, now + delay + 0.05); // Soft attack
-        gain.gain.exponentialRampToValueAtTime(0.001, now + delay + 1.5); // Slow release
-        
-        osc.start(now + delay);
-        osc.stop(now + delay + 2.0);
-      };
-
-      // Fmaj7 Dreamy Arpeggio
-      playMusicBoxNote(349.23, 0);       // F4
-      playMusicBoxNote(440.00, 0.2);     // A4
-      playMusicBoxNote(523.25, 0.4);     // C5
-      playMusicBoxNote(659.25, 0.65);    // E5
-      playMusicBoxNote(880.00, 1.0);     // A5
-      break;
-    }
-      
-    case 'ripple':
-    case 'swish': {
-      // Soft whoosh + shimmer
-      const noiseBuffer = createNoiseBuffer();
-      if (!noiseBuffer) return;
-      
-      const noise = audioCtx.createBufferSource();
-      const noiseFilter = audioCtx.createBiquadFilter();
-      const noiseGain = audioCtx.createGain();
-      
-      noise.buffer = noiseBuffer;
-      noiseFilter.type = 'bandpass';
-      noiseFilter.frequency.setValueAtTime(400, now);
-      noiseFilter.frequency.exponentialRampToValueAtTime(2000, now + 0.3);
-      
-      noise.connect(noiseFilter);
-      noiseFilter.connect(noiseGain);
-      noiseGain.connect(audioCtx.destination);
-      
-      noiseGain.gain.setValueAtTime(0, now);
-      noiseGain.gain.linearRampToValueAtTime(0.1, now + 0.1);
-      noiseGain.gain.exponentialRampToValueAtTime(0.001, now + 0.4);
-      
-      noise.start(now);
-      noise.stop(now + 0.5);
-
-      if (type === 'ripple') { // Add extra shimmer for ripples
-        const osc = audioCtx.createOscillator();
-        const gain = audioCtx.createGain();
-        osc.type = 'sine';
-        osc.connect(gain);
-        gain.connect(audioCtx.destination);
-        osc.frequency.value = 2500;
-        gain.gain.setValueAtTime(0, now);
-        gain.gain.linearRampToValueAtTime(0.05, now + 0.1);
-        gain.gain.exponentialRampToValueAtTime(0.001, now + 0.3);
-        osc.start(now);
-        osc.stop(now + 0.4);
-      }
-      break;
-    }
-
-    case 'panel': {
-      // Paper flip / soft swish
-      const noiseBuffer = createNoiseBuffer();
-      if (!noiseBuffer) return;
-      
-      const noise = audioCtx.createBufferSource();
-      const noiseFilter = audioCtx.createBiquadFilter();
-      const noiseGain = audioCtx.createGain();
-      
-      noise.buffer = noiseBuffer;
-      noiseFilter.type = 'lowpass';
-      noiseFilter.frequency.value = 800; // Muffled noise
-      
-      noise.connect(noiseFilter);
-      noiseFilter.connect(noiseGain);
-      noiseGain.connect(audioCtx.destination);
-      
-      noiseGain.gain.setValueAtTime(0, now);
-      noiseGain.gain.linearRampToValueAtTime(0.15, now + 0.02);
-      noiseGain.gain.exponentialRampToValueAtTime(0.001, now + 0.15);
-      
-      noise.start(now);
-      noise.stop(now + 0.2);
-      break;
-    }
+  
+  const mode = options?.mode || 'builder';
+  const forceBuilder = options?.forceBuilderSound || false;
+  
+  let generator;
+  if(forceBuilder) {
+    generator = soundMapBuilder[type];
+  } else {
+    generator = (mode === 'viewer') ? soundMapViewer[type] : soundMapBuilder[type];
+  }
+  
+  if (generator) {
+    generator(audioCtx, pitchVar, audioTime);
   }
 };
